@@ -3,6 +3,7 @@
 ![Version](https://img.shields.io/badge/version-0.1.0-blue)
 ![Platform](https://img.shields.io/badge/platform-Vercel-green)
 ![AI](https://img.shields.io/badge/AI-MiniMax%20M2.7-purple)
+![Database](https://img.shields.io/badge/Database-Neon%20PostgreSQL-blue)
 
 SEOMaster is a comprehensive SEO analytics dashboard powered by AI. It features GSC Command Center, CTR Lab, AI Overview & GEO optimization, Trend Intelligence, Topic Cluster Analyzer, and Core Web Vitals analysis.
 
@@ -10,8 +11,9 @@ SEOMaster is a comprehensive SEO analytics dashboard powered by AI. It features 
 
 - **Framework**: Next.js 15 (App Router, TypeScript)
 - **AI Engine**: MiniMax M2.7 via Hermes Agent / OpenRouter
-- **Database**: Supabase (PostgreSQL)
-- **Deployment**: Vercel (Node.js standalone)
+- **Database**: Neon PostgreSQL (free serverless)
+- **Cache**: Upstash Redis (optional, free tier)
+- **Deployment**: Vercel
 
 ## Features
 
@@ -36,19 +38,13 @@ npm install
 Copy `.env.example` to `.env.local` and fill in your values:
 
 ```bash
-# MiniMax API (via OpenRouter/Hermes compatible endpoint)
+# AI - MiniMax M2.7 via OpenRouter/Hermes
 ANTHROPIC_BASE_URL=https://api.minimax.io/anthropic
 ANTHROPIC_AUTH_TOKEN=sk-cp-your-token
 ANTHROPIC_MODEL=MiniMax-M2.7
 
-# Supabase
-NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
-SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
-
-# OpenRouter (if using Hermes Agent)
-OPENROUTER_API_KEY=sk-cp-your-token
-OPENROUTER_BASE_URL=https://api.minimax.io/anthropic
+# Database - Neon PostgreSQL (free serverless)
+DATABASE_URL=postgresql://user:password@ep-xxx-xxx-123456.us-east-2.aws.neon.tech/neondb?sslmode=require
 ```
 
 ### 3. Run Development Server
@@ -63,15 +59,34 @@ Open [http://localhost:3000](http://localhost:3000) to start.
 
 1. Push to GitHub
 2. Connect repo to Vercel
-3. Add environment variables in Vercel dashboard
+3. Add environment variables in Vercel dashboard:
+   - `ANTHROPIC_BASE_URL`
+   - `ANTHROPIC_AUTH_TOKEN`
+   - `ANTHROPIC_MODEL`
+   - `DATABASE_URL` (Neon PostgreSQL connection string)
 4. Deploy
 
-## Supabase Setup
+## Database Setup
 
-1. Create a Supabase project at [supabase.com](https://supabase.com)
-2. Get your `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-3. For server-side operations, generate a `SUPABASE_SERVICE_ROLE_KEY`
-4. Add to Vercel environment variables
+### Neon PostgreSQL (Recommended - Free)
+
+1. Sign up at [neon.tech](https://neon.tech)
+2. Create a new project
+3. Copy your connection string (looks like `postgresql://user:pass@host/db?sslmode=require`)
+4. Add as `DATABASE_URL` in Vercel
+
+Neon free tier: 0.5GB storage, 5 projects, 5 branches, serverless compute.
+
+### Upstash Redis (Optional - Free)
+
+For caching and sessions, sign up at [upstash.com](https://upstash.com):
+
+```bash
+UPSTASH_REDIS_REST_URL=https://xxx.upstash.io
+UPSTASH_REDIS_REST_TOKEN=your-token
+```
+
+Free tier: 10K commands/day.
 
 ## Hermes Agent + OpenRouter Setup
 
