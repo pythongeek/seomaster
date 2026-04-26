@@ -18,12 +18,7 @@ export const sql = DATABASE_URL ? neon(DATABASE_URL) : null;
 //     })
 //   : null;
 
-// ─── Helper functions ──────────────────────────────────────────────────────
-export async function query(sql: string, params?: unknown[]) {
-  if (!sql) throw new Error('No DATABASE_URL configured. Add Neon PostgreSQL credentials.');
-  return sql(params || []);
-}
-
+// ─── Connection check ───────────────────────────────────────────────────────
 export async function checkConnection(): Promise<boolean> {
   if (!sql) return false;
   try {
