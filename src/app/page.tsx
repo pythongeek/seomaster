@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { C, TABS } from "@/lib/constants";
 import { callAI, fetchGSCData } from "@/lib/api";
 
@@ -207,7 +207,7 @@ function GSCTab() {
   const [fetchLoading, setFetchLoading] = useState(false);
   const [analysis, setAnalysis] = useState("");
   const [error, setError] = useState("");
-  const fileRef = { current: { click: () => {} } };
+  const fileRef = useRef<HTMLInputElement>(null);
 
   const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
@@ -329,8 +329,8 @@ Use emojis for section headers. Be specific and data-driven.`,
       {mode === "upload" && (
         <Section title="Upload GSC Export">
           <div style={{ display: "flex", gap: 12, marginBottom: 12, flexWrap: "wrap" }}>
-            <input type="file" accept=".csv,.tsv,.txt" onChange={handleFile} style={{ display: "none" }} />
-            <Btn onClick={() => fileRef.current.click()} color={C.purple}>📁 Select CSV File</Btn>
+            <input type="file" accept=".csv,.tsv,.txt" onChange={handleFile} ref={fileRef} style={{ display: "none" }} />
+            <Btn onClick={() => fileRef.current?.click()} color={C.purple}>📁 Select CSV File</Btn>
             <Btn onClick={handleParse} color={C.blue} disabled={!csvText}>Parse Data</Btn>
           </div>
           <TextArea value={csvText} onChange={setCsvText} placeholder="Or paste GSC CSV data here (Performance export)…" rows={4} />
