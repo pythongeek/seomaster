@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
 
     // Get access token
     await client.authorize();
-    const accessToken = client.accessToken || '';
+    const accessToken = await client.getAccessToken();
 
     // Call GSC API
     const gscResp = await fetch(
