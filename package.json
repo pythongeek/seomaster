@@ -10,20 +10,17 @@
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",
-    "@supabase/ssr": "0.5.2",
-    "@supabase/supabase-js": "2.47.0",
-    "google-auth-library": "^9.15.0",
-    "googleapis": "^144.0.0",
     "next": "15.1.11",
     "react": "19.0.0",
     "react-dom": "19.0.0",
-    "recharts": "2.15.0",
-    "ws": "^8.20.0"
+    "recharts": "2.15.0"
   },
   "devDependencies": {
     "@types/node": "22.10.1",
     "@types/react": "19.0.1",
     "@types/react-dom": "19.0.1",
+    "google-auth-library": "^9.15.0",
+    "googleapis": "^144.0.0",
     "typescript": "5.7.2"
   }
 }

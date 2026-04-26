@@ -1,16 +1,9 @@
 // AI API helper - routes through OpenRouter for Hermes Agent with MiniMax M2.7
-// GSC API helper - uses Service Account for Google Search Console
-
-import { JWT } from 'google-auth-library';
+// GSC calls go through /api/gsc route (server-side)
 
 const BASE_URL = process.env.OPENROUTER_BASE_URL || process.env.ANTHROPIC_BASE_URL || "https://api.minimax.io/anthropic";
 const API_KEY = process.env.OPENROUTER_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN || "";
 const MODEL = process.env.ANTHROPIC_MODEL || "MiniMax-M2.7";
-
-// GSC Service Account - path to JSON key file (for local dev) or inline credentials
-const GSC_SERVICE_ACCOUNT_EMAIL = process.env.GSC_SERVICE_ACCOUNT_EMAIL || "";
-const GSC_SERVICE_ACCOUNT_KEY = process.env.GSC_SERVICE_ACCOUNT_KEY || "";
-const GSC_SERVICE_ACCOUNT_KEY_FILE = process.env.GSC_SERVICE_ACCOUNT_KEY_FILE || "";
 
 export async function callAI(systemPrompt: string, userContent: string, onChunk?: (text: string) => void): Promise<string> {
   const resp = await fetch(`${BASE_URL}/v1/messages`, {
@@ -50,7 +43,7 @@ export function tryJSON(text: string): unknown {
   }
 }
 
-// ─── Google Search Console API with Service Account ─────────────────────────
+// ─── CSV Parser ────────────────────────────────────────────────────────────
 export interface GSCRow {
   query: string;
   page: string;
@@ -84,7 +77,7 @@ export function parseGSCcsv(csv: string): GSCRow[] {
   }).filter(r => r.query || r.page);
 }
 
-// Get GSC data using Service Account
+// ─── GSC via internal API route ─────────────────────────────────────────────
 export async function fetchGSCData(options: {
   siteUrl: string;
   startDate: string;
@@ -92,51 +85,15 @@ export async function fetchGSCData(options: {
   dimensions?: string[];
   rowLimit?: number;
 }): Promise<GSCRow[]> {
-  const { siteUrl, startDate, endDate, dimensions = ["query", "page"], rowLimit = 5000 } = options;
+  const { siteUrl, startDate, endDate, dimensions, rowLimit } = options;
 
-  // Create JWT client from service account credentials
-  const client = new JWT({
-    email: GSC_SERVICE_ACCOUNT_EMAIL,
-    key: GSC_SERVICE_ACCOUNT_KEY || undefined,
-    keyFile: GSC_SERVICE_ACCOUNT_KEY_FILE || undefined,
-    scopes: ['https://www.googleapis.com/auth/webmasters.readonly'],
+  const resp = await fetch('/api/gsc', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ siteUrl, startDate, endDate, dimensions, rowLimit }),
   });
 
-  // Get access token
-  await client.authorize();
-  const accessToken = client.accessToken || '';
-
-  const resp = await fetch(
-    `https://searchconsole.googleapis.com/webmasters/v3/sites/${encodeURIComponent(siteUrl)}/searchAnalytics/query`,
-    {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        startDate,
-        endDate,
-        dimensions,
-        rowLimit,
-      }),
-    }
-  );
-
-  if (!resp.ok) {
-    const error = await resp.text();
-    throw new Error(`GSC API error ${resp.status}: ${error}`);
-  }
-
   const data = await resp.json();
-  if (data.error) throw new Error(data.error.message);
-
-  return (data.rows || []).map((r: { keys: string[]; clicks: number; impressions: number; ctr: number; position: number }) => ({
-    query: r.keys?.[0] || "",
-    page: r.keys?.[1] || "",
-    clicks: r.clicks || 0,
-    impressions: r.impressions || 0,
-    ctr: (r.ctr || 0) * 100,
-    position: r.position || 0,
-  }));
+  if (data.error) throw new Error(data.error);
+  return data.rows || [];
 }
