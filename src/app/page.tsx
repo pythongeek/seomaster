@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { C, TABS } from "@/lib/constants";
+import { callAI } from "@/lib/api";
 
 interface BadgeProps {
   color: string;
