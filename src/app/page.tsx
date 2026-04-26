@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { C, TABS } from "@/lib/constants";
-import { callAI } from "@/lib/api";
+import { callAI, fetchGSCData } from "@/lib/api";
 
 interface BadgeProps {
   color: string;
@@ -192,7 +192,6 @@ const AnalysisBox = ({ result, loading }: AnalysisBoxProps) => {
 function GSCTab() {
   const [mode, setMode] = useState("upload");
   const [csvText, setCsvText] = useState("");
-  const [token, setToken] = useState("");
   const [siteUrl, setSiteUrl] = useState("");
   const [startDate, setStartDate] = useState("2025-01-01");
   const [endDate, setEndDate] = useState("2025-04-01");
@@ -253,30 +252,19 @@ function GSCTab() {
   };
 
   const handleFetchAPI = async () => {
-    if (!token || !siteUrl) { setError("Token and site URL required."); return; }
+    if (!siteUrl) { setError("Site URL required."); return; }
     setFetchLoading(true); setError("");
     try {
-      const resp = await fetch(
-        `https://searchconsole.googleapis.com/webmasters/v3/sites/${encodeURIComponent(siteUrl)}/searchAnalytics/query`,
-        {
-          method: "POST",
-          headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ startDate, endDate, dimensions: ["query", "page"], rowLimit: 5000 })
-        }
-      );
-      const data = await resp.json();
-      if (data.error) throw new Error(data.error.message);
-      const parsed = (data.rows || []).map((r: { keys: string[]; clicks: number; impressions: number; ctr: number; position: number }) => ({
-        query: r.keys?.[0] || "",
-        page: r.keys?.[1] || "",
-        clicks: r.clicks || 0,
-        impressions: r.impressions || 0,
-        ctr: (r.ctr || 0) * 100,
-        position: r.position || 0,
-      }));
+      const parsed = await fetchGSCData({
+        siteUrl,
+        startDate,
+        endDate,
+        dimensions: ["query", "page"],
+        rowLimit: 5000,
+      });
       setRows(parsed);
     } catch (e) {
-      setError("API error: " + (e as Error).message + ". Check your token and site URL.");
+      setError("API error: " + (e as Error).message + ". Make sure your Service Account has Search Console access.");
     } finally { setFetchLoading(false); }
   };
 
@@ -353,12 +341,8 @@ Use emojis for section headers. Be specific and data-driven.`,
       )}
 
       {mode === "api" && (
-        <Section title="GSC API Connection">
+        <Section title="GSC API Connection (Service Account)">
           <div style={{ display: "grid", gap: 10, marginBottom: 12 }}>
-            <div>
-              <div style={{ color: C.muted, fontSize: 11, marginBottom: 4 }}>OAuth Access Token</div>
-              <Input value={token} onChange={setToken} placeholder="ya29.xxx — get from developers.google.com/oauthplayground" />
-            </div>
             <div>
               <div style={{ color: C.muted, fontSize: 11, marginBottom: 4 }}>Site URL (exact, e.g. https://example.com/)</div>
               <Input value={siteUrl} onChange={setSiteUrl} placeholder="https://yoursite.com/" />
@@ -376,7 +360,7 @@ Use emojis for section headers. Be specific and data-driven.`,
             <Btn onClick={handleFetchAPI} loading={fetchLoading} color={C.green}>⬇️ Fetch GSC Data</Btn>
           </div>
           <div style={{ color: C.muted, fontSize: 11 }}>
-            Get token: <span style={{ color: C.blue }}>developers.google.com/oauthplayground</span> → Select "Search Console API v3" → Authorize APIs → Exchange for token
+            Uses Service Account from <span style={{ color: C.blue }}>GSC_SERVICE_ACCOUNT_EMAIL</span> env var. Ensure the service account email has Search Console access.
           </div>
         </Section>
       )}
