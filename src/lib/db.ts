@@ -45,20 +45,24 @@ export async function saveReport(report: {
   summary?: unknown;
 }) {
   if (!sql) return null;
-  const [row] = await sql`
-    INSERT INTO seo_reports (report_type, title, data, summary)
-    VALUES (${report.report_type}, ${report.title}, ${JSON.stringify(report.data)}, ${report.summary ? JSON.stringify(report.summary) : null})
-    RETURNING id, created_at
-  `;
-  return row;
+  try {
+    const [row] = await sql`
+      INSERT INTO seo_reports (report_type, title, data, summary)
+      VALUES (${report.report_type}, ${report.title}, ${JSON.stringify(report.data)}, ${report.summary ? JSON.stringify(report.summary) : null})
+      RETURNING id, created_at
+    `;
+    return row;
+  } catch { return null; }
 }
 
 export async function getReports(type?: string, limit = 50) {
   if (!sql) return [];
-  if (type) {
-    return sql`SELECT * FROM seo_reports WHERE report_type = ${type} ORDER BY created_at DESC LIMIT ${limit}`;
-  }
-  return sql`SELECT * FROM seo_reports ORDER BY created_at DESC LIMIT ${limit}`;
+  try {
+    if (type) {
+      return sql`SELECT * FROM seo_reports WHERE report_type = ${type} ORDER BY created_at DESC LIMIT ${limit}`;
+    }
+    return sql`SELECT * FROM seo_reports ORDER BY created_at DESC LIMIT ${limit}`;
+  } catch { return []; }
 }
 
 export async function getReport(id: number) {

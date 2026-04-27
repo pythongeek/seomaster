@@ -305,19 +305,13 @@ export async function POST(req: NextRequest) {
         const siteUrl = (options?.siteUrl as string) || 'unknown';
         const dateRange = `${options?.startDate || '2025-01-01'} to ${options?.endDate || '2025-04-01'}`;
 
-        // Save to database
-        await saveGSCSnapshot({
-          site_url: siteUrl,
-          date_range: dateRange,
-          data: rows,
-          metrics: analyzed.overview,
-        });
-        await saveReport({
-          report_type: 'gsc_full',
-          title: `GSC Analysis — ${siteUrl} (${dateRange})`,
-          data: rows,
-          summary: analyzed.overview,
-        });
+        // Save to database (best effort — don't fail the analysis if DB has issues)
+        try {
+          await saveGSCSnapshot({ site_url: siteUrl, date_range: dateRange, data: rows, metrics: analyzed.overview });
+        } catch {}
+        try {
+          await saveReport({ report_type: 'gsc_full', title: `GSC Analysis — ${siteUrl} (${dateRange})`, data: rows, summary: analyzed.overview });
+        } catch {}
 
         result = analyzed;
         reportTitle = `GSC Full Analysis — ${siteUrl}`;
@@ -326,7 +320,7 @@ export async function POST(req: NextRequest) {
       case 'ctr_optimize': {
         const { keyword, currentTitle, intent, context } = data as Record<string, string>;
         const analyzed = analyzeCTROptimize(keyword, currentTitle, intent, context);
-        await saveReport({ report_type: 'ctr_optimize', title: `CTR Optimization — ${keyword}`, data, summary: analyzed });
+        try { await saveReport({ report_type: 'ctr_optimize', title: `CTR Optimization — ${keyword}`, data, summary: analyzed }); } catch {}
         result = analyzed;
         reportTitle = `CTR Optimization — ${keyword}`;
         break;
@@ -334,7 +328,7 @@ export async function POST(req: NextRequest) {
       case 'keyword_research': {
         const { topic, seedKeywords } = data as { topic: string; seedKeywords: string[] };
         const analyzed = analyzeKeywordResearch(topic, seedKeywords);
-        await saveReport({ report_type: 'keyword_research', title: `Keyword Research — ${topic}`, data, summary: analyzed });
+        try { await saveReport({ report_type: 'keyword_research', title: `Keyword Research — ${topic}`, data, summary: analyzed }); } catch {}
         result = analyzed;
         reportTitle = `Keyword Research — ${topic}`;
         break;
@@ -342,7 +336,7 @@ export async function POST(req: NextRequest) {
       case 'topic_cluster': {
         const { seed } = data as { seed: string };
         const analyzed = analyzeTopicCluster(seed);
-        await saveReport({ report_type: 'topic_cluster', title: `Topic Cluster — ${seed}`, data, summary: analyzed });
+        try { await saveReport({ report_type: 'topic_cluster', title: `Topic Cluster — ${seed}`, data, summary: analyzed }); } catch {}
         result = analyzed;
         reportTitle = `Topic Cluster — ${seed}`;
         break;
