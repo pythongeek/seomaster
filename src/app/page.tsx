@@ -16,6 +16,9 @@ interface KeywordResult { topGroups: Array<{ keyword: string; volume: number; cp
 interface TopicResult { clusterStructure: Array<{ name: string; keywords: string[]; weight: number }>; internalLinkSuggestions: Array<{ from: string; to: string; anchor: string; strength: string }>; pillarTopic: string; }
 interface FilterResult { intentDistribution: Array<{ intent: string; count: number; impressions: number; clicks: number; avgCTR: number }>; ctrGaps: Array<{ query: string; page: string; impressions: number; ctr: number; position: number; ctrGap: number; potentialClicks: number; fix: string }>; cannibalization: Array<{ query: string; urls: Array<{ url: string; position: number; clicks: number; ctr: number }>; recommendation: string }>; executiveSummary: string; top5Opportunities: Array<Record<string, unknown>>; actionPlan: string[]; totalFiltered: number; regexFilter: string; }
 interface IndexResult { patternGroups: Array<{ pattern: string; patternLabel: string; count: number; urls: string[]; diagnosis: string; resolution: string; priority: string }>; executiveSummary: string; quickFixes: string[]; totalUrls: number; uniquePatterns: number; }
+interface CrawlResult { statusGroups: Array<{ code: string; percentage: number; status: string; recommendation: string }>; fileGroups: Array<{ type: string; percentage: number; status: string; recommendation: string }>; purposeGroups: Array<{ purpose: string; percentage: number; status: string; recommendation: string }>; issues: Array<{ category: string; severity: string; description: string; fix: string; devOpsChecklist?: string[] }>; severitySummary: { label: string; count: number; color: string }; executiveSummary: string; }
+interface GEOResult { topPillars: Array<{ name: string; queries: Array<{ query: string; clicks: number; impressions: number; ctr: number; position: number }>; totalImpressions: number; avgPosition: number; avgCTR: number; dominantFormat: string }>; momentumPatterns: Array<{ format: string; avgCTR: number; sampleQueries: string[] }>; programmaticGaps: Array<{ modifier: string; volume: number; ctr: number; recommendation: string }>; newContentBlueprints: Array<{ niche: string; targetQuery: string; suggestedTitle: string; format: string; geoOptimizations: string[]; aeoOptimizations: string[] }>; geoRules: string[]; aeoRules: string[]; siteBaseline: { totalImpressions: number; avgPosition: number; avgCTR: number; totalClicks: number }; }
+interface SitemapResult { success: boolean; validated: boolean; sitemapUrl: string; validationStatus: number | null; validationMessage: string; pingStatus: number | null; pingMessage: string; pingedAt: string | null; }
 
 // ─── Shared Components ───────────────────────────────────────────────────────
 const Badge = ({ color, children }: { color: string; children: React.ReactNode }) => (
@@ -1005,6 +1008,424 @@ function IndexTab() {
   );
 }
 
+// ─── Crawl Budget Analyzer ─────────────────────────────────────────────────
+function CrawlTab() {
+  const [crawlText, setCrawlText] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<CrawlResult | null>(null);
+  const [error, setError] = useState("");
+
+  const handleAnalyze = async () => {
+    if (!crawlText.trim()) { setError("Paste crawl stats data first."); return; }
+    setLoading(true); setError("");
+    try {
+      const resp = await fetch("/api/crawl", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ crawlStatsText: crawlText }),
+      });
+      const json = await resp.json();
+      if (!resp.ok) throw new Error(json.error);
+      setResult(json.result);
+    } catch (e) { setError((e as Error).message); }
+    finally { setLoading(false); }
+  };
+
+  return (
+    <div>
+      <Section title="🖥️ Crawl Budget & Server Log Analyzer">
+        <div style={{ display: "grid", gap: 12 }}>
+          <TextArea value={crawlText} onChange={setCrawlText} placeholder="Paste GSC Crawl Stats raw text here…&#10;&#10;Example format:&#10;200 OK — 87.0%&#10;404 Not Found — 4.2%&#10;301 Moved Permanently — 3.1%&#10;500 Server Error — 0.5%&#10;HTML — 55.0%&#10;JS — 22.0%&#10;CSS — 8.0%&#10;Images — 12.0%&#10;Discovery — 12.0%&#10;Refresh — 76.0%&#10;Click tracking — 8.0%" rows={10} />
+          <Btn onClick={handleAnalyze} loading={loading} color={C.green}>🖥️ Analyze Crawl Budget</Btn>
+          <div style={{ color: C.muted, fontSize: 11 }}>Paste raw GSC Crawl Stats percentages for: response codes, file types, and crawl purpose. Percentages are parsed automatically.</div>
+        </div>
+      </Section>
+
+      {loading && <LoadingSpinner />}
+
+      {error && <div style={{ color: C.red, background: C.red + "11", border: `1px solid ${C.red}33`, borderRadius: 8, padding: "10px 14px", marginBottom: 16, fontSize: 13 }}>{error}</div>}
+
+      {result && !loading && (
+        <div style={{ marginTop: 24 }}>
+          {/* Severity Banner */}
+          <div style={{ background: result.severitySummary.color + '22', border: `1px solid ${result.severitySummary.color}66`, borderRadius: 10, padding: "16px 20px", marginBottom: 24, display: "flex", gap: 16, alignItems: "center" }}>
+            <span style={{ fontSize: 32 }}>{result.severitySummary.label === 'HEALTHY' ? '✅' : result.severitySummary.label === 'CRITICAL' ? '🚨' : '⚠️'}</span>
+            <div>
+              <div style={{ color: result.severitySummary.color, fontSize: 18, fontWeight: 800 }}>{result.severitySummary.label}</div>
+              <div style={{ color: C.muted, fontSize: 13, marginTop: 2 }}>{result.executiveSummary}</div>
+            </div>
+          </div>
+
+          {/* Status Code Breakdown */}
+          {result.statusGroups?.length ? (
+            <Section title="📡 HTTP Response Codes" accent={C.blue}>
+              <div style={{ display: "grid", gap: 8 }}>
+                {result.statusGroups.map((g, i) => (
+                  <div key={i} style={{ background: C.card, border: `1px solid ${g.status === 'Healthy' ? C.green + '44' : g.status === 'Critical' ? C.red + '66' : C.amber + '44'}`, borderRadius: 8, padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      <Badge color={g.status === 'Healthy' ? C.green : g.status === 'Critical' ? C.red : C.amber}>{g.code}</Badge>
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <span style={{ color: C.text, fontSize: 14, fontWeight: 700 }}>{g.percentage}%</span>
+                        <span style={{ color: C.muted, fontSize: 11 }}>{g.status}</span>
+                      </div>
+                    </div>
+                    <div style={{ color: C.muted, fontSize: 11, maxWidth: 400, textAlign: "right" }}>{g.recommendation}</div>
+                  </div>
+                ))}
+              </div>
+            </Section>
+          ) : null}
+
+          {/* File Type Breakdown */}
+          {result.fileGroups?.length ? (
+            <Section title="📦 File Type Crawl Distribution" accent={C.amber}>
+              <div style={{ display: "grid", gap: 8 }}>
+                {result.fileGroups.map((g, i) => (
+                  <div key={i} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      <Badge color={g.status === 'Healthy' ? C.green : C.amber}>{g.type}</Badge>
+                      <span style={{ color: C.text, fontSize: 14, fontWeight: 700 }}>{g.percentage}%</span>
+                    </div>
+                    <div style={{ color: C.muted, fontSize: 11, maxWidth: 400, textAlign: "right" }}>{g.recommendation}</div>
+                  </div>
+                ))}
+              </div>
+            </Section>
+          ) : null}
+
+          {/* Crawl Purpose */}
+          {result.purposeGroups?.length ? (
+            <Section title="🎯 Crawl Purpose Distribution" accent={C.purple}>
+              <div style={{ display: "grid", gap: 8 }}>
+                {result.purposeGroups.map((g, i) => (
+                  <div key={i} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      <Badge color={g.status === 'Healthy' ? C.green : g.status === 'Critical' ? C.red : C.amber}>{g.purpose}</Badge>
+                      <span style={{ color: C.text, fontSize: 14, fontWeight: 700 }}>{g.percentage}%</span>
+                    </div>
+                    <div style={{ color: C.muted, fontSize: 11, maxWidth: 400, textAlign: "right" }}>{g.recommendation}</div>
+                  </div>
+                ))}
+              </div>
+            </Section>
+          ) : null}
+
+          {/* Issues */}
+          {result.issues?.length ? (
+            <Section title="🚀 Prioritized Fix List" accent={C.red}>
+              <div style={{ display: "grid", gap: 14 }}>
+                {result.issues.map((issue, i) => (
+                  <div key={i} style={{ background: C.card, border: `1px solid ${issue.severity === 'High' ? C.red + '66' : C.border}`, borderRadius: 10, padding: 16 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+                      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                        <Badge color={issue.severity === 'High' ? C.red : issue.severity === 'Medium' ? C.amber : C.muted}>{issue.severity}</Badge>
+                        <span style={{ color: C.text, fontWeight: 700 }}>{issue.category}</span>
+                      </div>
+                    </div>
+                    <div style={{ color: C.text, fontSize: 13, marginBottom: 8 }}>{issue.description}</div>
+                    <div style={{ color: C.green, fontSize: 12, marginBottom: 8, lineHeight: 1.6 }}>{issue.fix}</div>
+                    {issue.devOpsChecklist?.length ? (
+                      <div>
+                        <div style={{ color: C.muted, fontSize: 11, marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.05em" }}>DevOps Checklist</div>
+                        <div style={{ display: "grid", gap: 3 }}>
+                          {issue.devOpsChecklist.map((step, j) => (
+                            <div key={j} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                              <span style={{ color: C.blue, fontSize: 11 }}>▸</span>
+                              <span style={{ color: C.muted, fontSize: 11, fontFamily: "monospace" }}>{step}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            </Section>
+          ) : null}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── GEO Matrix ──────────────────────────────────────────────────────────────
+function GEOTab() {
+  const [csvText, setCsvText] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<GEOResult | null>(null);
+  const [error, setError] = useState("");
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    const reader = new FileReader();
+    reader.onload = ev => setCsvText((ev.target?.result as string) || "");
+    reader.readAsText(f);
+  };
+
+  const handleAnalyze = async () => {
+    if (!csvText.trim()) { setError("Load GSC data first."); return; }
+    setLoading(true); setError("");
+    try {
+      const rows = parseGSCcsv(csvText);
+      const resp = await fetch("/api/geo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ globalDataset: rows }),
+      });
+      const json = await resp.json();
+      if (!resp.ok) throw new Error(json.error);
+      setResult(json.result);
+    } catch (e) { setError((e as Error).message); }
+    finally { setLoading(false); }
+  };
+
+  return (
+    <div>
+      <Section title="📐 GEO Matrix & Content Strategy">
+        <div style={{ display: "grid", gap: 12 }}>
+          <div style={{ display: "flex", gap: 10 }}>
+            <input type="file" accept=".csv,.tsv,.txt" onChange={handleFile} ref={fileRef} style={{ display: "none" }} />
+            <Btn onClick={() => fileRef.current?.click()} color={C.purple}>📁 Load Full GSC CSV</Btn>
+            <Btn onClick={handleAnalyze} loading={loading} color={C.green} disabled={!csvText}>📐 Generate GEO Matrix</Btn>
+          </div>
+          <TextArea value={csvText} onChange={setCsvText} placeholder="Paste your full GSC CSV (top 500 rows) here for programmatic content analysis…" rows={4} />
+          <div style={{ color: C.muted, fontSize: 11 }}>Upload top 500 rows of GSC data for full semantic clustering, momentum detection, and content blueprint generation.</div>
+        </div>
+      </Section>
+
+      {loading && <LoadingSpinner />}
+
+      {error && <div style={{ color: C.red, background: C.red + "11", border: `1px solid ${C.red}33`, borderRadius: 8, padding: "10px 14px", marginBottom: 16, fontSize: 13 }}>{error}</div>}
+
+      {result && !loading && (
+        <div style={{ marginTop: 24 }}>
+          {/* Site Baseline */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12, marginBottom: 24 }}>
+            <Stat label="Total Impressions" value={result.siteBaseline.totalImpressions.toLocaleString()} color={C.blue} />
+            <Stat label="Avg Position" value={result.siteBaseline.avgPosition.toFixed(1)} color={C.amber} />
+            <Stat label="Avg CTR" value={result.siteBaseline.avgCTR.toFixed(1) + "%"} color={C.green} />
+            <Stat label="Total Clicks" value={result.siteBaseline.totalClicks.toLocaleString()} color={C.purple} />
+          </div>
+
+          {/* Top Pillars */}
+          {result.topPillars?.length ? (
+            <Section title="🏛️ Top Content Pillars" accent={C.blue}>
+              <div style={{ display: "grid", gap: 14 }}>
+                {result.topPillars.map((pillar, i) => (
+                  <div key={i} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 10, padding: 16 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
+                      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                        <Badge color={C.green}>{pillar.dominantFormat}</Badge>
+                        <span style={{ color: C.text, fontWeight: 700, fontSize: 15 }}>{pillar.name}</span>
+                      </div>
+                      <div style={{ display: "flex", gap: 10 }}>
+                        <span style={{ color: C.blue, fontSize: 12 }}>{pillar.totalImpressions.toLocaleString()} impr</span>
+                        <span style={{ color: C.amber, fontSize: 12 }}>pos {pillar.avgPosition}</span>
+                        <span style={{ color: C.green, fontSize: 12 }}>{pillar.avgCTR}% CTR</span>
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                      {pillar.queries.slice(0, 8).map((q, j) => (
+                        <span key={j} style={{ background: C.surface, color: C.muted, borderRadius: 4, padding: "2px 8px", fontSize: 11 }}>{q.query} ({q.clicks})</span>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Section>
+          ) : null}
+
+          {/* Momentum Patterns */}
+          {result.momentumPatterns?.length ? (
+            <Section title="📈 Content Format Momentum" accent={C.green}>
+              <div style={{ display: "grid", gap: 8 }}>
+                {result.momentumPatterns.filter(p => p.avgCTR > 0).map((p, i) => (
+                  <div key={i} style={{ background: C.card, border: `1px solid ${C.green}44`, borderRadius: 8, padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      <Badge color={C.blue}>{p.format}</Badge>
+                      <span style={{ color: C.green, fontWeight: 700, fontSize: 14 }}>{p.avgCTR}% avg CTR</span>
+                    </div>
+                    <div style={{ color: C.muted, fontSize: 11 }}>{p.sampleQueries.slice(0, 3).join(' · ')}</div>
+                  </div>
+                ))}
+              </div>
+            </Section>
+          ) : null}
+
+          {/* Programmatic Gaps */}
+          {result.programmaticGaps?.length ? (
+            <Section title="🔍 Programmatic Gap Opportunities" accent={C.amber}>
+              <div style={{ display: "grid", gap: 8 }}>
+                {result.programmaticGaps.map((gap, i) => (
+                  <div key={i} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                      <Badge color={C.amber}>"{gap.modifier}"</Badge>
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <span style={{ color: C.muted, fontSize: 11 }}>CTR: {gap.ctr}%</span>
+                        <span style={{ color: C.blue, fontSize: 11 }}>{gap.volume.toLocaleString()} queries</span>
+                      </div>
+                    </div>
+                    <div style={{ color: C.text, fontSize: 12 }}>{gap.recommendation}</div>
+                  </div>
+                ))}
+              </div>
+            </Section>
+          ) : null}
+
+          {/* New Content Blueprints */}
+          {result.newContentBlueprints?.length ? (
+            <Section title="🗺️ New Content Blueprints" accent={C.purple}>
+              <div style={{ display: "grid", gap: 16 }}>
+                {result.newContentBlueprints.map((bp, i) => (
+                  <div key={i} style={{ background: C.card, border: `1px solid ${C.purple}44`, borderRadius: 10, padding: 16 }}>
+                    <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+                      <Badge color={C.blue}>{bp.format}</Badge>
+                      <Badge color={C.purple}>{bp.niche}</Badge>
+                    </div>
+                    <div style={{ color: C.text, fontWeight: 700, fontSize: 14, marginBottom: 6 }}>{bp.suggestedTitle}</div>
+                    <div style={{ color: C.muted, fontSize: 11, marginBottom: 10 }}>Target: {bp.targetQuery}</div>
+
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                      <div>
+                        <div style={{ color: C.green, fontSize: 11, marginBottom: 4 }}>GEO OPTIMIZATIONS</div>
+                        {bp.geoOptimizations.map((o, j) => (
+                          <div key={j} style={{ color: C.muted, fontSize: 11, marginBottom: 2 }}>• {o}</div>
+                        ))}
+                      </div>
+                      <div>
+                        <div style={{ color: C.blue, fontSize: 11, marginBottom: 4 }}>AEO OPTIMIZATIONS</div>
+                        {bp.aeoOptimizations.map((o, j) => (
+                          <div key={j} style={{ color: C.muted, fontSize: 11, marginBottom: 2 }}>• {o}</div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Section>
+          ) : null}
+
+          {/* GEO Rules */}
+          {result.geoRules?.length ? (
+            <Section title="🤖 GEO Rules (AI Overview Optimization)" accent={C.green}>
+              <div style={{ display: "grid", gap: 6 }}>
+                {result.geoRules.map((rule, i) => (
+                  <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                    <span style={{ color: C.green, fontSize: 14 }}>✓</span>
+                    <span style={{ color: C.text, fontSize: 13 }}>{rule}</span>
+                  </div>
+                ))}
+              </div>
+            </Section>
+          ) : null}
+
+          {/* AEO Rules */}
+          {result.aeoRules?.length ? (
+            <Section title="💬 AEO Rules (Answer Engine Optimization)" accent={C.blue}>
+              <div style={{ display: "grid", gap: 6 }}>
+                {result.aeoRules.map((rule, i) => (
+                  <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                    <span style={{ color: C.blue, fontSize: 14 }}>✓</span>
+                    <span style={{ color: C.text, fontSize: 13 }}>{rule}</span>
+                  </div>
+                ))}
+              </div>
+            </Section>
+          ) : null}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Sitemap Validator ──────────────────────────────────────────────────────
+function SitemapTab() {
+  const [sitemapUrl, setSitemapUrl] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<SitemapResult | null>(null);
+  const [error, setError] = useState("");
+
+  const handleValidate = async () => {
+    if (!sitemapUrl.trim()) { setError("Enter a sitemap URL first."); return; }
+    setLoading(true); setError("");
+    try {
+      const resp = await fetch("/api/sitemap", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sitemapUrl }),
+      });
+      const json = await resp.json();
+      if (!resp.ok) throw new Error(json.error);
+      setResult(json.result);
+    } catch (e) { setError((e as Error).message); }
+    finally { setLoading(false); }
+  };
+
+  return (
+    <div>
+      <Section title="🗺️ Automated Sitemap Validation System">
+        <div style={{ display: "grid", gap: 12 }}>
+          <Input value={sitemapUrl} onChange={setSitemapUrl} placeholder="https://yoursite.com/sitemap_index.xml" />
+          <Btn onClick={handleValidate} loading={loading} color={C.green}>🗺️ Validate & Ping Google</Btn>
+          <div style={{ color: C.muted, fontSize: 11 }}>Validates your XML sitemap and notifies Google of updates. Supports standard sitemap formats including sitemap_index.xml.</div>
+        </div>
+      </Section>
+
+      {loading && <LoadingSpinner />}
+
+      {error && <div style={{ color: C.red, background: C.red + "11", border: `1px solid ${C.red}33`, borderRadius: 8, padding: "10px 14px", marginBottom: 16, fontSize: 13 }}>{error}</div>}
+
+      {result && !loading && (
+        <div style={{ marginTop: 24 }}>
+          {/* Result Banner */}
+          <div style={{ background: result.success ? C.green + '22' : C.red + '22', border: `1px solid ${result.success ? C.green + '66' : C.red + '66'}`, borderRadius: 10, padding: "16px 20px", marginBottom: 24 }}>
+            <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 8 }}>
+              <span style={{ fontSize: 28 }}>{result.success ? '✅' : '❌'}</span>
+              <div>
+                <div style={{ color: result.success ? C.green : C.red, fontSize: 16, fontWeight: 800 }}>{result.success ? 'SITEMAP VALIDATED' : 'VALIDATION FAILED'}</div>
+                <div style={{ color: C.muted, fontSize: 12 }}>{result.sitemapUrl}</div>
+              </div>
+            </div>
+
+            <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <span style={{ color: C.muted, fontSize: 12, width: 140 }}>Validation:</span>
+                <Badge color={result.validated ? C.green : C.red}>{result.validationStatus || 'N/A'}</Badge>
+                <span style={{ color: C.text, fontSize: 12 }}>{result.validationMessage}</span>
+              </div>
+              {result.pingedAt && (
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <span style={{ color: C.muted, fontSize: 12, width: 140 }}>Pinged:</span>
+                  <Badge color={C.blue}>GOOGLE PING SENT</Badge>
+                  <span style={{ color: C.text, fontSize: 12 }}>{new Date(result.pingedAt).toLocaleString()}</span>
+                </div>
+              )}
+              {result.pingMessage && (
+                <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                  <span style={{ color: C.muted, fontSize: 12, width: 140 }}>Note:</span>
+                  <span style={{ color: C.muted, fontSize: 12 }}>{result.pingMessage}</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* How It Works */}
+          <Section title="📖 How It Works" accent={C.muted}>
+            <div style={{ display: "grid", gap: 8, color: C.muted, fontSize: 12, lineHeight: 1.7 }}>
+              <div>1. <strong style={{ color: C.text }}>HEAD request</strong> — Server validates sitemap exists and returns 200 OK</div>
+              <div>2. <strong style={{ color: C.text }}>Google ping</strong> — Notifies Googlebot to re-crawl and ingest sitemap changes</div>
+              <div>3. <strong style={{ color: C.text }}>GSC confirmation</strong> — Check Google Search Console to confirm update was processed</div>
+              <div style={{ marginTop: 8, color: C.amber, fontSize: 11 }}>Note: Google does not return a CORS-usable response for ping requests — the ping is sent but confirmation requires checking GSC.</div>
+            </div>
+          </Section>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Main App ────────────────────────────────────────────────────────────────
 export default function SEOMaster() {
   const [activeTab, setActiveTab] = useState("gsc");
@@ -1051,6 +1472,9 @@ export default function SEOMaster() {
         {activeTab === "ai" && <KeywordTab />}
         {activeTab === "filter" && <FilterTab />}
         {activeTab === "index" && <IndexTab />}
+        {activeTab === "crawl" && <CrawlTab />}
+        {activeTab === "geo" && <GEOTab />}
+        {activeTab === "sitemap" && <SitemapTab />}
         {activeTab === "topic" && <TopicTab />}
         {activeTab === "reports" && <ReportsTab />}
       </main>

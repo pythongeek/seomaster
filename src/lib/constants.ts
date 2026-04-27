@@ -15,11 +15,14 @@ export const C = {
 };
 
 export const TABS = [
-  { id: "gsc",    label: "GSC Command Center",    icon: "📊" },
-  { id: "ctr",    label: "CTR Lab",              icon: "🎯" },
-  { id: "ai",     label: "Keyword Research",    icon: "🔬" },
-  { id: "filter", label: "Regex Filter",         icon: "🔍" },
-  { id: "index",  label: "Index Diagnoser",      icon: "🩺" },
-  { id: "topic",  label: "Topic Analyzer",      icon: "🧠" },
+  { id: "gsc",     label: "GSC Command Center",   icon: "📊" },
+  { id: "ctr",     label: "CTR Lab",             icon: "🎯" },
+  { id: "ai",      label: "Keyword Research",   icon: "🔬" },
+  { id: "filter",  label: "Regex Filter",       icon: "🔍" },
+  { id: "index",   label: "Index Diagnoser",     icon: "🩺" },
+  { id: "crawl",   label: "Crawl Analyzer",     icon: "🖥️" },
+  { id: "geo",     label: "GEO Matrix",          icon: "📐" },
+  { id: "sitemap", label: "Sitemap Validator",   icon: "🗺️" },
+  { id: "topic",   label: "Topic Analyzer",     icon: "🧠" },
   { id: "reports", label: "Saved Reports",       icon: "📁" },
 ];
