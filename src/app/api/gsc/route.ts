@@ -11,6 +11,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'siteUrl is required' }, { status: 400 });
     }
 
+    if (siteUrl.length > 500 || (startDate && startDate.length > 20) || (endDate && endDate.length > 20)) {
+      return NextResponse.json({ error: 'Invalid input length' }, { status: 400 });
+    }
+
     const email = process.env.GSC_SERVICE_ACCOUNT_EMAIL;
     const key = process.env.GSC_SERVICE_ACCOUNT_KEY;
 
@@ -21,16 +25,24 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Replace escaped newlines with real newlines (Vercel stores them as literal \n)
+    const privateKey = key.replace(/\\n/g, '\n');
+
     // Create JWT client from service account credentials
     const client = new JWT({
       email,
-      key: key.replace(/\\n/g, '\n'),
+      key: privateKey,
       scopes: ['https://www.googleapis.com/auth/webmasters.readonly'],
     });
 
     // Get access token
     await client.authorize();
-    const accessToken = await client.getAccessToken();
+    const tokenResponse = await client.getAccessToken();
+    const accessToken = tokenResponse.token;
+
+    if (!accessToken) {
+      return NextResponse.json({ error: 'Failed to obtain GSC access token. Check Service Account credentials.' }, { status: 500 });
+    }
 
     // Call GSC API
     const gscResp = await fetch(

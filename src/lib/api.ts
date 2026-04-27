@@ -1,49 +1,8 @@
-// AI API helper - routes through OpenRouter for Hermes Agent with MiniMax M2.7
-// GSC calls go through /api/gsc route (server-side)
+// Client-side API helpers
+// All AI and GSC calls go through server-side routes (api/ai, api/gsc)
+// to keep API keys server-side only.
 
-const BASE_URL = process.env.OPENROUTER_BASE_URL || process.env.ANTHROPIC_BASE_URL || "https://api.minimax.io/anthropic";
-const API_KEY = process.env.OPENROUTER_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN || "";
-const MODEL = process.env.ANTHROPIC_MODEL || "MiniMax-M2.7";
-
-export async function callAI(systemPrompt: string, userContent: string, onChunk?: (text: string) => void): Promise<string> {
-  const resp = await fetch(`${BASE_URL}/v1/messages`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      max_tokens: 1000,
-      stream: false,
-      system: systemPrompt,
-      messages: [{ role: "user", content: userContent }],
-    }),
-  });
-
-  if (!resp.ok) {
-    const error = await resp.text();
-    throw new Error(`AI API error ${resp.status}: ${error}`);
-  }
-
-  const data = await resp.json();
-  if (data.error) throw new Error(data.error.message);
-
-  const text = data.content?.map((b: { text?: string }) => b.text || "").join("") || "";
-  if (onChunk) onChunk(text);
-  return text;
-}
-
-export function tryJSON(text: string): unknown {
-  try {
-    const clean = text.replace(/```json|```/g, "").trim();
-    return JSON.parse(clean);
-  } catch {
-    return null;
-  }
-}
-
-// ─── CSV Parser ────────────────────────────────────────────────────────────
+// ─── Types ─────────────────────────────────────────────────────────────────
 export interface GSCRow {
   query: string;
   page: string;
@@ -53,6 +12,25 @@ export interface GSCRow {
   position: number;
 }
 
+// ─── AI via server-side route ───────────────────────────────────────────────
+export async function callAI(systemPrompt: string, userContent: string): Promise<string> {
+  const resp = await fetch('/api/ai', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ systemPrompt, userContent }),
+  });
+
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(`AI API error ${resp.status}: ${text}`);
+  }
+
+  const data = await resp.json();
+  if (data.error) throw new Error(data.error);
+  return data.text || '';
+}
+
+// ─── CSV Parser ────────────────────────────────────────────────────────────
 export function parseGSCcsv(csv: string): GSCRow[] {
   const lines = csv.trim().split("\n");
   const headerIdx = lines.findIndex(l =>
@@ -77,7 +55,7 @@ export function parseGSCcsv(csv: string): GSCRow[] {
   }).filter(r => r.query || r.page);
 }
 
-// ─── GSC via internal API route ─────────────────────────────────────────────
+// ─── GSC via server-side route ─────────────────────────────────────────────
 export async function fetchGSCData(options: {
   siteUrl: string;
   startDate: string;
@@ -92,6 +70,11 @@ export async function fetchGSCData(options: {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ siteUrl, startDate, endDate, dimensions, rowLimit }),
   });
+
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(`GSC API error ${resp.status}: ${text}`);
+  }
 
   const data = await resp.json();
   if (data.error) throw new Error(data.error);
