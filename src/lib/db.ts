@@ -7,39 +7,34 @@ export const sql = DATABASE_URL ? neon(DATABASE_URL) : null;
 // ─── Schema Init ───────────────────────────────────────────────────────────
 export async function initDB() {
   if (!sql) return;
-  await sql`
-    CREATE TABLE IF NOT EXISTS seo_reports (
-      id SERIAL PRIMARY KEY,
-      report_type TEXT NOT NULL,
-      title TEXT NOT NULL,
-      data JSONB NOT NULL,
-      summary JSONB,
-      created_at TIMESTAMP DEFAULT NOW(),
-      updated_at TIMESTAMP DEFAULT NOW()
-    );
-
-    CREATE TABLE IF NOT EXISTS gsc_snapshots (
-      id SERIAL PRIMARY KEY,
-      site_url TEXT NOT NULL,
-      date_range TEXT NOT NULL,
-      data JSONB NOT NULL,
-      metrics JSONB NOT NULL,
-      created_at TIMESTAMP DEFAULT NOW()
-    );
-
-    CREATE TABLE IF NOT EXISTS keyword_clusters (
-      id SERIAL PRIMARY KEY,
-      cluster_name TEXT NOT NULL,
-      keywords JSONB NOT NULL,
-      search_volume INTEGER DEFAULT 0,
-      difficulty REAL DEFAULT 0,
-      created_at TIMESTAMP DEFAULT NOW()
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_reports_type ON seo_reports(report_type);
-    CREATE INDEX IF NOT EXISTS idx_reports_created ON seo_reports(created_at DESC);
-    CREATE INDEX IF NOT EXISTS idx_snapshots_site ON gsc_snapshots(site_url);
-  `;
+  await sql`CREATE TABLE IF NOT EXISTS seo_reports (
+    id SERIAL PRIMARY KEY,
+    report_type TEXT NOT NULL,
+    title TEXT NOT NULL,
+    data JSONB NOT NULL,
+    summary JSONB,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+  )`;
+  await sql`CREATE TABLE IF NOT EXISTS gsc_snapshots (
+    id SERIAL PRIMARY KEY,
+    site_url TEXT NOT NULL,
+    date_range TEXT NOT NULL,
+    data JSONB NOT NULL,
+    metrics JSONB NOT NULL,
+    created_at TIMESTAMP DEFAULT NOW()
+  )`;
+  await sql`CREATE TABLE IF NOT EXISTS keyword_clusters (
+    id SERIAL PRIMARY KEY,
+    cluster_name TEXT NOT NULL,
+    keywords JSONB NOT NULL,
+    search_volume INTEGER DEFAULT 0,
+    difficulty REAL DEFAULT 0,
+    created_at TIMESTAMP DEFAULT NOW()
+  )`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_reports_type ON seo_reports(report_type)`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_reports_created ON seo_reports(created_at DESC)`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_snapshots_site ON gsc_snapshots(site_url)`;
 }
 
 // ─── Report CRUD ───────────────────────────────────────────────────────────
