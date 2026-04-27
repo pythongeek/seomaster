@@ -14,6 +14,8 @@ interface GSCResult { overview: Record<string, unknown>; ctrOpportunities: Analy
 interface CTRResult { titleVariants: Array<{ title: string; predictedCTR: string; reasoning?: string }>; metaVariants: Array<{ text: string; charCount: number; cta: string; predictedCTR: string }>; schemaMarkup: string; keyword: string; searchIntent: string; }
 interface KeywordResult { topGroups: Array<{ keyword: string; volume: number; cpc: number; difficulty: number; opportunity: string; modifiers: Array<{ keyword: string; volume: number }> }>; questionKeywords: Array<{ keyword: string; volume: number; cpc: number; intent: string; bestFormat: string }>; topic: string; }
 interface TopicResult { clusterStructure: Array<{ name: string; keywords: string[]; weight: number }>; internalLinkSuggestions: Array<{ from: string; to: string; anchor: string; strength: string }>; pillarTopic: string; }
+interface FilterResult { intentDistribution: Array<{ intent: string; count: number; impressions: number; clicks: number; avgCTR: number }>; ctrGaps: Array<{ query: string; page: string; impressions: number; ctr: number; position: number; ctrGap: number; potentialClicks: number; fix: string }>; cannibalization: Array<{ query: string; urls: Array<{ url: string; position: number; clicks: number; ctr: number }>; recommendation: string }>; executiveSummary: string; top5Opportunities: Array<Record<string, unknown>>; actionPlan: string[]; totalFiltered: number; regexFilter: string; }
+interface IndexResult { patternGroups: Array<{ pattern: string; patternLabel: string; count: number; urls: string[]; diagnosis: string; resolution: string; priority: string }>; executiveSummary: string; quickFixes: string[]; totalUrls: number; uniquePatterns: number; }
 
 // ─── Shared Components ───────────────────────────────────────────────────────
 const Badge = ({ color, children }: { color: string; children: React.ReactNode }) => (
@@ -733,6 +735,276 @@ function ReportsTab() {
   );
 }
 
+// ─── Regex Filter Engine ───────────────────────────────────────────────────
+function FilterTab() {
+  const [csvText, setCsvText] = useState("");
+  const [searchType, setSearchType] = useState("web");
+  const [regexFilter, setRegexFilter] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<FilterResult | null>(null);
+  const [error, setError] = useState("");
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    const reader = new FileReader();
+    reader.onload = ev => setCsvText((ev.target?.result as string) || "");
+    reader.readAsText(f);
+  };
+
+  const handleAnalyze = async () => {
+    if (!csvText.trim()) { setError("Load data first."); return; }
+    setLoading(true); setError("");
+    try {
+      const rows = parseGSCcsv(csvText);
+      const resp = await fetch("/api/filter", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dataset: rows, searchType, regexFilter }),
+      });
+      const json = await resp.json();
+      if (!resp.ok) throw new Error(json.error);
+      setResult(json.result);
+    } catch (e) { setError((e as Error).message); }
+    finally { setLoading(false); }
+  };
+
+  return (
+    <div>
+      <Section title="🔍 Regex Search Console Filter">
+        <div style={{ display: "grid", gap: 12 }}>
+          <div style={{ display: "flex", gap: 10 }}>
+            <input type="file" accept=".csv,.tsv,.txt" onChange={handleFile} ref={fileRef} style={{ display: "none" }} />
+            <Btn onClick={() => fileRef.current?.click()} color={C.purple}>📁 Select CSV</Btn>
+            <Btn onClick={handleAnalyze} loading={loading} color={C.green} disabled={!csvText}>🔍 Run Filter</Btn>
+          </div>
+          <TextArea value={csvText} onChange={setCsvText} placeholder="Paste GSC CSV data here…" rows={4} />
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div>
+              <div style={{ color: C.muted, fontSize: 11, marginBottom: 4 }}>Search Surface</div>
+              <select value={searchType} onChange={e => setSearchType(e.target.value)} style={{ width: "100%", background: C.surface, color: C.text, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", fontSize: 13, fontFamily: "monospace", outline: "none" }}>
+                {["web", "news", "discover", "googleNews"].map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+            <Input value={regexFilter} onChange={setRegexFilter} placeholder="Regex pattern (e.g. ^how to|guide$)" />
+          </div>
+          <div style={{ color: C.muted, fontSize: 11 }}>Supports regex like: <code style={{ color: C.blue }}>^how to|guide$</code> <code style={{ color: C.blue }}>\bbuy\b|\bprice\b</code> <code style={{ color: C.blue }}>blog|blog/</code></div>
+        </div>
+      </Section>
+
+      {loading && <LoadingSpinner />}
+
+      {error && <div style={{ color: C.red, background: C.red + "11", border: `1px solid ${C.red}33`, borderRadius: 8, padding: "10px 14px", marginBottom: 16, fontSize: 13 }}>{error}</div>}
+
+      {result && !loading && (
+        <div style={{ marginTop: 24 }}>
+          {/* Stats */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12, marginBottom: 24 }}>
+            <Stat label="Filtered" value={result.totalFiltered.toLocaleString()} color={C.blue} />
+            <Stat label="CTR Gaps" value={result.ctrGaps.length.toString()} color={C.amber} />
+            <Stat label="Cannibalization" value={result.cannibalization.length.toString()} color={C.red} />
+            <Stat label="Intent Buckets" value={result.intentDistribution.length.toString()} color={C.green} />
+          </div>
+
+          {/* Executive Summary */}
+          {result.executiveSummary && (
+            <Section title="📝 Executive Summary" accent={C.green}>
+              <div style={{ background: C.card, border: `1px solid ${C.green}44`, borderRadius: 10, padding: 16, color: C.text, fontSize: 13, lineHeight: 1.7 }}>{result.executiveSummary}</div>
+            </Section>
+          )}
+
+          {/* Intent Distribution */}
+          {result.intentDistribution?.length ? (
+            <Section title="🧠 Intent Distribution" accent={C.blue}>
+              <div style={{ display: "grid", gap: 8 }}>
+                {result.intentDistribution.map((bucket, i) => (
+                  <div key={i} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      <Badge color={bucket.intent === 'Transactional' ? C.green : bucket.intent === 'Navigational' ? C.blue : bucket.intent === 'Informational' ? C.amber : C.muted}>{bucket.intent}</Badge>
+                      <span style={{ color: C.muted, fontSize: 12 }}>{bucket.count} queries</span>
+                    </div>
+                    <div style={{ display: "flex", gap: 12 }}>
+                      <span style={{ color: C.text, fontSize: 12 }}>{bucket.impressions?.toLocaleString()} impr</span>
+                      <span style={{ color: C.green, fontSize: 12 }}>{(bucket.avgCTR as number)?.toFixed(1)}% avg CTR</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Section>
+          ) : null}
+
+          {/* CTR Gaps */}
+          {result.ctrGaps?.length ? (
+            <Section title="🎯 Top CTR Opportunities" accent={C.amber}>
+              <div style={{ display: "grid", gap: 10 }}>
+                {result.ctrGaps.slice(0, 10).map((gap, i) => (
+                  <div key={i} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 8, padding: "12px 16px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                      <span style={{ color: C.text, fontWeight: 600 }}>{gap.query}</span>
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <Badge color={C.red}>-{gap.ctrGap}% CTR gap</Badge>
+                        <Badge color={C.green}>+{gap.potentialClicks} clicks</Badge>
+                      </div>
+                    </div>
+                    <div style={{ color: C.muted, fontSize: 11, marginBottom: 4 }}>Impressions: {gap.impressions?.toLocaleString()} · Position: {gap.position} · Current CTR: {gap.ctr}%</div>
+                    <div style={{ color: C.blue, fontSize: 12 }}>Fix: {gap.fix}</div>
+                  </div>
+                ))}
+              </div>
+            </Section>
+          ) : null}
+
+          {/* Cannibalization */}
+          {result.cannibalization?.length ? (
+            <Section title="⚠️ Cannibalization Detected" accent={C.red}>
+              <div style={{ display: "grid", gap: 10 }}>
+                {result.cannibalization.map((c, i) => (
+                  <div key={i} style={{ background: C.card, border: `1px solid ${C.red}44`, borderRadius: 8, padding: "12px 16px" }}>
+                    <div style={{ color: C.text, fontWeight: 600, marginBottom: 6 }}>"{c.query}" — {c.urls.length} URLs competing</div>
+                    <div style={{ display: "grid", gap: 4 }}>
+                      {c.urls.map((u, j) => (
+                        <div key={j} style={{ display: "flex", justifyContent: "space-between", padding: "4px 8px", background: C.surface, borderRadius: 4, fontSize: 11 }}>
+                          <span style={{ color: C.muted, maxWidth: 300, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.url}</span>
+                          <span style={{ color: C.amber }}>pos {u.position} · {u.clicks} clicks · {u.ctr?.toFixed(1)}% CTR</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ color: C.green, fontSize: 11, marginTop: 6 }}>{c.recommendation}</div>
+                  </div>
+                ))}
+              </div>
+            </Section>
+          ) : null}
+
+          {/* Action Plan */}
+          {result.actionPlan?.length ? (
+            <Section title="🚀 Action Plan" accent={C.purple}>
+              <div style={{ display: "grid", gap: 6 }}>
+                {result.actionPlan.map((action, i) => (
+                  <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                    <span style={{ color: C.green, fontSize: 14 }}>✓</span>
+                    <span style={{ color: C.text, fontSize: 13 }}>{action}</span>
+                  </div>
+                ))}
+              </div>
+            </Section>
+          ) : null}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Indexation Diagnostic ──────────────────────────────────────────────────
+function IndexTab() {
+  const [rawText, setRawText] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<IndexResult | null>(null);
+  const [error, setError] = useState("");
+
+  const handleAnalyze = async () => {
+    if (!rawText.trim()) { setError("Paste GSC indexing data first."); return; }
+    setLoading(true); setError("");
+    try {
+      const resp = await fetch("/api/diagnose", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rawText }),
+      });
+      const json = await resp.json();
+      if (!resp.ok) throw new Error(json.error);
+      setResult(json.result);
+    } catch (e) { setError((e as Error).message); }
+    finally { setLoading(false); }
+  };
+
+  return (
+    <div>
+      <Section title="🩺 Indexation Diagnostic Engine">
+        <div style={{ display: "grid", gap: 12 }}>
+          <TextArea value={rawText} onChange={setRawText} placeholder="Paste raw CSV or text from GSC 'Why pages aren't indexed' report here…&#10;&#10;Example format:&#10;https://yoursite.com/blog/post1&#9;Crawled - currently not indexed&#10;https://yoursite.com/tag/news&#9;Crawled - currently not indexed" rows={8} />
+          <Btn onClick={handleAnalyze} loading={loading} color={C.green}>🩺 Diagnose Indexation</Btn>
+          <div style={{ color: C.muted, fontSize: 11 }}>Supports tab-separated, comma-separated, or pipe-separated (URL • Reason) formats</div>
+        </div>
+      </Section>
+
+      {loading && <LoadingSpinner />}
+
+      {error && <div style={{ color: C.red, background: C.red + "11", border: `1px solid ${C.red}33`, borderRadius: 8, padding: "10px 14px", marginBottom: 16, fontSize: 13 }}>{error}</div>}
+
+      {result && !loading && (
+        <div style={{ marginTop: 24 }}>
+          {/* Stats */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12, marginBottom: 24 }}>
+            <Stat label="URLs Analyzed" value={result.totalUrls.toLocaleString()} color={C.blue} />
+            <Stat label="Patterns Found" value={result.uniquePatterns.toString()} color={C.amber} />
+            <Stat label="High Priority" value={result.patternGroups?.filter(g => g.priority === 'High').length.toString() || "0"} color={C.red} />
+            <Stat label="Medium Priority" value={result.patternGroups?.filter(g => g.priority === 'Medium').length.toString() || "0"} color={C.amber} />
+          </div>
+
+          {/* Executive Summary */}
+          {result.executiveSummary && (
+            <Section title="📝 Executive Summary" accent={C.green}>
+              <div style={{ background: C.card, border: `1px solid ${C.green}44`, borderRadius: 10, padding: 16, color: C.text, fontSize: 13, lineHeight: 1.7 }}>{result.executiveSummary}</div>
+            </Section>
+          )}
+
+          {/* Quick Fixes */}
+          {result.quickFixes?.length ? (
+            <Section title="⚡ Quick Fixes — Start Here" accent={C.red}>
+              <div style={{ display: "grid", gap: 8 }}>
+                {result.quickFixes.map((fix, i) => (
+                  <div key={i} style={{ background: C.card, border: `1px solid ${C.red}44`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 13 }}>{fix}</div>
+                ))}
+              </div>
+            </Section>
+          ) : null}
+
+          {/* Pattern Groups */}
+          {result.patternGroups?.length ? (
+            <Section title="🔎 Pattern-Based Diagnosis" accent={C.blue}>
+              <div style={{ display: "grid", gap: 16 }}>
+                {result.patternGroups.map((group, i) => (
+                  <div key={i} style={{ background: C.card, border: `1px solid ${group.priority === 'High' ? C.red + '66' : group.priority === 'Medium' ? C.amber + '44' : C.border}`, borderRadius: 10, padding: 16 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
+                      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                        <Badge color={group.priority === 'High' ? C.red : group.priority === 'Medium' ? C.amber : C.muted}>{group.priority} Priority</Badge>
+                        <span style={{ color: C.text, fontWeight: 700 }}>{group.patternLabel}</span>
+                      </div>
+                      <span style={{ color: C.muted, fontSize: 12 }}>{group.count} URLs</span>
+                    </div>
+
+                    <div style={{ marginBottom: 10 }}>
+                      <div style={{ color: C.muted, fontSize: 11, marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.05em" }}>Diagnosis</div>
+                      <div style={{ color: C.text, fontSize: 13, lineHeight: 1.6 }}>{group.diagnosis}</div>
+                    </div>
+
+                    <div style={{ marginBottom: 10 }}>
+                      <div style={{ color: C.muted, fontSize: 11, marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.05em" }}>Resolution</div>
+                      <div style={{ color: C.green, fontSize: 13, lineHeight: 1.6, background: C.surface, borderRadius: 6, padding: "8px 12px" }}>{group.resolution}</div>
+                    </div>
+
+                    <div>
+                      <div style={{ color: C.muted, fontSize: 11, marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.05em" }}>Affected URLs ({group.urls.length})</div>
+                      <div style={{ maxHeight: 120, overflowY: "auto", display: "grid", gap: 2 }}>
+                        {group.urls.slice(0, 20).map((url, j) => (
+                          <div key={j} style={{ color: C.muted, fontSize: 11, fontFamily: "monospace", padding: "2px 4px", background: C.bg, borderRadius: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{url}</div>
+                        ))}
+                        {group.urls.length > 20 && <div style={{ color: C.muted, fontSize: 11, fontStyle: "italic" }}>…and {group.urls.length - 20} more</div>}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Section>
+          ) : null}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Main App ────────────────────────────────────────────────────────────────
 export default function SEOMaster() {
   const [activeTab, setActiveTab] = useState("gsc");
@@ -777,13 +1049,9 @@ export default function SEOMaster() {
         {activeTab === "gsc" && <GSCTab onAnalysis={handleAnalysis} />}
         {activeTab === "ctr" && <CTRTab />}
         {activeTab === "ai" && <KeywordTab />}
-        {activeTab === "trend" && <TopicTab />}
+        {activeTab === "filter" && <FilterTab />}
+        {activeTab === "index" && <IndexTab />}
         {activeTab === "topic" && <TopicTab />}
-        {activeTab === "vitals" && (
-          <div style={{ textAlign: "center", padding: 60, color: C.muted }}>
-            ⚡ Core Web Vitals analysis — coming soon. Upload GSC data to get started.
-          </div>
-        )}
         {activeTab === "reports" && <ReportsTab />}
       </main>
     </div>
