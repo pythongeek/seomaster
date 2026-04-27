@@ -1,211 +1,189 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { C, TABS } from "@/lib/constants";
-import { callAI, fetchGSCData } from "@/lib/api";
+import { parseGSCcsv, callAI } from "@/lib/api";
+import { BarChart, Bar, LineChart, Line, ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from "recharts";
 
-interface BadgeProps {
-  color: string;
-  children: React.ReactNode;
-}
+// ─── Types ─────────────────────────────────────────────────────────────────
+interface GSCRow { query: string; page: string; clicks: number; impressions: number; ctr: number; position: number; estimatedClicksLost?: number; fix?: string; }
+interface Report { id: number; report_type: string; title: string; data: unknown; summary?: unknown; created_at: string; }
+interface AnalyzedRow { query: string; impressions: number; ctr: number; position: number; estimatedClicksLost?: number; fix?: string; priority?: number; }
+interface QuickWin { query: string; position: number; clicks: number; estimatedTrafficGain: number; action: string; }
+interface GSCResult { overview: Record<string, unknown>; ctrOpportunities: AnalyzedRow[]; quickWins: QuickWin[]; aiTargets: Array<Record<string, unknown>>; intentDistribution: Record<string, number>; recommendations: string; }
+interface CTRResult { titleVariants: Array<{ title: string; predictedCTR: string; reasoning?: string }>; metaVariants: Array<{ text: string; charCount: number; cta: string; predictedCTR: string }>; schemaMarkup: string; keyword: string; searchIntent: string; }
+interface KeywordResult { topGroups: Array<{ keyword: string; volume: number; cpc: number; difficulty: number; opportunity: string; modifiers: Array<{ keyword: string; volume: number }> }>; questionKeywords: Array<{ keyword: string; volume: number; cpc: number; intent: string; bestFormat: string }>; topic: string; }
+interface TopicResult { clusterStructure: Array<{ name: string; keywords: string[]; weight: number }>; internalLinkSuggestions: Array<{ from: string; to: string; anchor: string; strength: string }>; pillarTopic: string; }
 
-const Badge = ({ color, children }: BadgeProps) => (
-  <span style={{
-    background: color + "22",
-    color,
-    border: `1px solid ${color}44`,
-    borderRadius: 4,
-    padding: "2px 8px",
-    fontSize: 11,
-    fontWeight: 700,
-    letterSpacing: "0.05em",
-    fontFamily: "monospace"
-  }}>{children}</span>
+// ─── Shared Components ───────────────────────────────────────────────────────
+const Badge = ({ color, children }: { color: string; children: React.ReactNode }) => (
+  <span style={{ background: color + "22", color, border: `1px solid ${color}44`, borderRadius: 4, padding: "2px 8px", fontSize: 11, fontWeight: 700, letterSpacing: "0.05em", fontFamily: "monospace" }}>{children}</span>
 );
 
-interface StatProps {
-  label: string;
-  value: string;
-  color?: string;
-  sub?: string;
-}
-
-const Stat = ({ label, value, color = C.blue, sub }: StatProps) => (
-  <div style={{
-    background: C.card,
-    border: `1px solid ${C.border}`,
-    borderRadius: 10,
-    padding: "16px 20px",
-  }}>
+const Stat = ({ label, value, color = C.blue, sub }: { label: string; value: string; color?: string; sub?: string }) => (
+  <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 10, padding: "16px 20px" }}>
     <div style={{ color: C.muted, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>{label}</div>
     <div style={{ color, fontSize: 28, fontWeight: 800, fontFamily: "monospace" }}>{value}</div>
     {sub && <div style={{ color: C.muted, fontSize: 12, marginTop: 2 }}>{sub}</div>}
   </div>
 );
 
-interface BtnProps {
-  onClick?: () => void;
-  disabled?: boolean;
-  loading?: boolean;
-  children: React.ReactNode;
-  color?: string;
-  small?: boolean;
-}
-
-const Btn = ({ onClick, disabled, loading, children, color = C.blue, small }: BtnProps) => (
-  <button
-    onClick={onClick}
-    disabled={disabled || loading}
-    style={{
-      background: disabled || loading ? C.sub : color,
-      color: "#fff",
-      border: "none",
-      borderRadius: 8,
-      padding: small ? "6px 14px" : "10px 22px",
-      fontSize: small ? 12 : 14,
-      fontWeight: 700,
-      cursor: disabled ? "not-allowed" : "pointer",
-      opacity: disabled || loading ? 0.7 : 1,
-      transition: "opacity 0.2s",
-      fontFamily: "inherit",
-    }}
-  >{loading ? "⏳ Analyzing…" : children}</button>
+const Btn = ({ onClick, disabled, loading, children, color = C.blue, small, outline }: {
+  onClick?: () => void; disabled?: boolean; loading?: boolean; children: React.ReactNode;
+  color?: string; small?: boolean; outline?: boolean;
+}) => (
+  <button onClick={onClick} disabled={disabled || loading} style={{
+    background: disabled || loading ? C.sub : outline ? 'transparent' : color,
+    color: outline ? color : "#fff",
+    border: outline ? `1px solid ${color}` : "none",
+    borderRadius: 8, padding: small ? "6px 14px" : "10px 22px",
+    fontSize: small ? 12 : 14, fontWeight: 700, cursor: disabled ? "not-allowed" : "pointer",
+    opacity: disabled || loading ? 0.7 : 1, transition: "opacity 0.2s", fontFamily: "inherit",
+  }}>{loading ? "⏳ Processing…" : children}</button>
 );
 
-interface TextAreaProps {
-  value: string;
-  onChange: (val: string) => void;
-  placeholder?: string;
-  rows?: number;
-}
-
-const TextArea = ({ value, onChange, placeholder, rows = 5 }: TextAreaProps) => (
-  <textarea
-    value={value}
-    onChange={e => onChange(e.target.value)}
-    placeholder={placeholder}
-    rows={rows}
-    style={{
-      width: "100%",
-      background: C.surface,
-      color: C.text,
-      border: `1px solid ${C.border}`,
-      borderRadius: 8,
-      padding: "12px 14px",
-      fontSize: 13,
-      fontFamily: "monospace",
-      resize: "vertical",
-      outline: "none",
-      boxSizing: "border-box",
-    }}
-  />
+const Input = ({ value, onChange, placeholder, type = "text" }: { value: string; onChange: (v: string) => void; placeholder?: string; type?: string }) => (
+  <input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} style={{
+    width: "100%", background: C.surface, color: C.text, border: `1px solid ${C.border}`, borderRadius: 8,
+    padding: "10px 14px", fontSize: 13, fontFamily: "monospace", outline: "none", boxSizing: "border-box",
+  }} />
 );
 
-interface InputProps {
-  value: string;
-  onChange: (val: string) => void;
-  placeholder?: string;
-  type?: string;
-}
-
-const Input = ({ value, onChange, placeholder, type = "text" }: InputProps) => (
-  <input
-    type={type}
-    value={value}
-    onChange={e => onChange(e.target.value)}
-    placeholder={placeholder}
-    style={{
-      width: "100%",
-      background: C.surface,
-      color: C.text,
-      border: `1px solid ${C.border}`,
-      borderRadius: 8,
-      padding: "10px 14px",
-      fontSize: 13,
-      fontFamily: "monospace",
-      outline: "none",
-      boxSizing: "border-box",
-    }}
-  />
+const TextArea = ({ value, onChange, placeholder, rows = 4 }: { value: string; onChange: (v: string) => void; placeholder?: string; rows?: number }) => (
+  <textarea value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} rows={rows} style={{
+    width: "100%", background: C.surface, color: C.text, border: `1px solid ${C.border}`, borderRadius: 8,
+    padding: "12px 14px", fontSize: 13, fontFamily: "monospace", resize: "vertical", outline: "none", boxSizing: "border-box",
+  }} />
 );
 
-interface SectionProps {
-  title: string;
-  children: React.ReactNode;
-  accent?: string;
-}
-
-const Section = ({ title, children, accent = C.blue }: SectionProps) => (
+const Section = ({ title, children, accent = C.blue, action }: { title: string; children: React.ReactNode; accent?: string; action?: React.ReactNode }) => (
   <div style={{ marginBottom: 28 }}>
-    <div style={{
-      display: "flex",
-      alignItems: "center",
-      gap: 10,
-      borderBottom: `1px solid ${C.border}`,
-      paddingBottom: 10,
-      marginBottom: 16
-    }}>
-      <div style={{ width: 3, height: 18, background: accent, borderRadius: 2 }} />
-      <span style={{ color: C.text, fontWeight: 700, fontSize: 15 }}>{title}</span>
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: `1px solid ${C.border}`, paddingBottom: 10, marginBottom: 16 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div style={{ width: 3, height: 18, background: accent, borderRadius: 2 }} />
+        <span style={{ color: C.text, fontWeight: 700, fontSize: 15 }}>{title}</span>
+      </div>
+      {action}
     </div>
     {children}
   </div>
 );
 
-interface AnalysisBoxProps {
-  result: string;
-  loading: boolean;
-}
+const LoadingSpinner = () => (
+  <div style={{ textAlign: "center", padding: 40 }}>
+    <div style={{ color: C.blue, fontSize: 32, marginBottom: 12, animation: "spin 1s linear infinite" }}>⚙️</div>
+    <div style={{ color: C.muted, fontSize: 13 }}>Analyzing data with AI…</div>
+    <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+  </div>
+);
 
-const AnalysisBox = ({ result, loading }: AnalysisBoxProps) => {
-  if (loading) return (
-    <div style={{
-      background: C.card,
-      border: `1px solid ${C.border}`,
-      borderRadius: 10,
-      padding: 24,
-      textAlign: "center"
-    }}>
-      <div style={{ color: C.blue, fontSize: 24, marginBottom: 8 }}>⚙️</div>
-      <div style={{ color: C.muted, fontSize: 13 }}>Running AI analysis…</div>
+// ─── Report Card ────────────────────────────────────────────────────────────
+function ReportCard({ report, onLoad }: { report: Report; onLoad: (r: Report) => void }) {
+  const typeColors: Record<string, string> = { gsc_full: C.blue, ctr_optimize: C.green, keyword_research: C.purple, topic_cluster: C.amber, ai_overview: C.red, vitals: C.purple };
+  return (
+    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 10, padding: 16, cursor: "pointer", transition: "border-color 0.2s" }}
+      onClick={() => onLoad(report)} onMouseEnter={e => (e.currentTarget.style.borderColor = typeColors[report.report_type] || C.blue)}
+      onMouseLeave={e => (e.currentTarget.style.borderColor = C.border)}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
+        <Badge color={typeColors[report.report_type] || C.blue}>{report.report_type.replace('_', ' ')}</Badge>
+        <span style={{ color: C.muted, fontSize: 11 }}>{new Date(report.created_at).toLocaleDateString()}</span>
+      </div>
+      <div style={{ color: C.text, fontSize: 14, fontWeight: 600, marginBottom: 6 }}>{report.title}</div>
+      {report.summary !== null && report.summary !== undefined && typeof report.summary === 'object' && 'totalClicks' in (report.summary as object) && (
+        <div style={{ color: C.green, fontSize: 20, fontWeight: 800, fontFamily: "monospace" }}>
+          {((report.summary as Record<string, number>).totalClicks)?.toLocaleString() || 0} clicks
+        </div>
+      )}
     </div>
   );
-  if (!result) return null;
-  return (
-    <div style={{
-      background: C.card,
-      border: `1px solid ${C.green}44`,
-      borderRadius: 10,
-      padding: 20,
-      fontFamily: "monospace",
-      fontSize: 13,
-      color: C.text,
-      whiteSpace: "pre-wrap",
-      lineHeight: 1.7,
-      maxHeight: 480,
-      overflowY: "auto"
-    }}>{result}</div>
-  );
-};
+}
 
-// ─── GSC Command Center ────────────────────────────────────────────────────
-function GSCTab() {
-  const [mode, setMode] = useState("upload");
+// ─── Chart Components ───────────────────────────────────────────────────────
+function CTRBarchart({ data }: { data: Array<{ query: string; impressions: number; ctr: number }> }) {
+  return (
+    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 10, padding: 16 }}>
+      <div style={{ color: C.muted, fontSize: 12, marginBottom: 10, fontWeight: 600 }}>📊 CTR Opportunity Distribution</div>
+      <ResponsiveContainer width="100%" height={220}>
+        <BarChart data={data.slice(0, 8)} margin={{ top: 0, right: 10, bottom: 0, left: -20 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
+          <XAxis dataKey="query" tick={{ fill: C.muted, fontSize: 9 }} tickFormatter={v => v.slice(0, 12) + "…"} />
+          <YAxis tick={{ fill: C.muted, fontSize: 9 }} />
+          <Tooltip contentStyle={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12 }} labelStyle={{ color: C.text }} />
+          <Bar dataKey="impressions" fill={C.blue} radius={[3, 3, 0, 0]} name="Impressions" />
+          <Bar dataKey="ctr" fill={C.green} radius={[3, 3, 0, 0]} name="CTR %" />
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+function PositionScatter({ data }: { data: Array<{ query: string; position: number; clicks: number }> }) {
+  return (
+    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 10, padding: 16 }}>
+      <div style={{ color: C.muted, fontSize: 12, marginBottom: 10, fontWeight: 600 }}>🎯 Position vs Clicks</div>
+      <ResponsiveContainer width="100%" height={220}>
+        <ScatterChart margin={{ top: 0, right: 10, bottom: 0, left: -20 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
+          <XAxis dataKey="position" name="Position" tick={{ fill: C.muted, fontSize: 9 }} domain={[0, 30]} label={{ value: "Position", fill: C.muted, fontSize: 9 }} />
+          <YAxis dataKey="clicks" name="Clicks" tick={{ fill: C.muted, fontSize: 9 }} />
+          <Tooltip contentStyle={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12 }}
+            formatter={(v, n) => [v, n]} labelFormatter={(l) => `Position: ${l}`} />
+          <Scatter data={data.slice(0, 20)} fill={C.amber} />
+        </ScatterChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+function IntentPie({ data }: { data: Record<string, number> }) {
+  const colors = [C.blue, C.green, C.amber, C.red];
+  const pieData = Object.entries(data).map(([name, value]) => ({ name, value }));
+  return (
+    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 10, padding: 16 }}>
+      <div style={{ color: C.muted, fontSize: 12, marginBottom: 10, fontWeight: 600 }}>🔍 Intent Distribution</div>
+      <ResponsiveContainer width="100%" height={200}>
+        <PieChart>
+          <Pie data={pieData} cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={3} dataKey="value" label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`} labelLine={false}>
+            {pieData.map((_, i) => <Cell key={i} fill={colors[i % colors.length]} />)}
+          </Pie>
+          <Tooltip contentStyle={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12 }} />
+          <Legend iconSize={10} iconType="circle" wrapperStyle={{ fontSize: 11 }} />
+        </PieChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+// ─── Recommendation Cards ───────────────────────────────────────────────────
+function RecommendationCard({ icon, title, description, impact, effort }: { icon: string; title: string; description: string; impact: string; effort: string }) {
+  const impactColors: Record<string, string> = { High: C.green, Medium: C.amber, Low: C.red };
+  const effortColors: Record<string, string> = { Low: C.green, Medium: C.amber, High: C.red };
+  return (
+    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 10, padding: 16, display: "flex", gap: 14, alignItems: "flex-start" }}>
+      <span style={{ fontSize: 24 }}>{icon}</span>
+      <div style={{ flex: 1 }}>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 4 }}>
+          <span style={{ color: C.text, fontWeight: 700, fontSize: 14 }}>{title}</span>
+          <Badge color={impactColors[impact] || C.blue}>{impact} Impact</Badge>
+          <Badge color={effortColors[effort] || C.muted}>{effort} Effort</Badge>
+        </div>
+        <div style={{ color: C.muted, fontSize: 12 }}>{description}</div>
+      </div>
+    </div>
+  );
+}
+
+// ─── GSC Tab ───────────────────────────────────────────────────────────────
+function GSCTab({ onAnalysis }: { onAnalysis: (data: unknown, type: string) => void }) {
+  const [mode, setMode] = useState<"upload" | "api">("upload");
   const [csvText, setCsvText] = useState("");
   const [siteUrl, setSiteUrl] = useState("");
   const [startDate, setStartDate] = useState("2025-01-01");
   const [endDate, setEndDate] = useState("2025-04-01");
-  const [rows, setRows] = useState<Array<{
-    query: string;
-    page: string;
-    clicks: number;
-    impressions: number;
-    ctr: number;
-    position: number;
-  }>>([]);
+  const [rows, setRows] = useState<GSCRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [fetchLoading, setFetchLoading] = useState(false);
-  const [analysis, setAnalysis] = useState("");
+  const [result, setResult] = useState<GSCResult | null>(null);
   const [error, setError] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -214,496 +192,580 @@ function GSCTab() {
     if (!f) return;
     const reader = new FileReader();
     reader.onload = ev => {
-      setCsvText(ev.target?.result as string || "");
-      const parsed = parseGSCcsv(ev.target?.result as string || "");
-      setRows(parsed);
+      const text = ev.target?.result as string || "";
+      setCsvText(text);
+      setRows(parseGSCcsv(text));
     };
     reader.readAsText(f);
-  };
-
-  const parseGSCcsv = (csv: string) => {
-    const lines = csv.trim().split("\n");
-    const headerIdx = lines.findIndex(l =>
-      /clicks/i.test(l) && /impressions/i.test(l)
-    );
-    if (headerIdx < 0) return [];
-    const headers = lines[headerIdx].split(",").map(h =>
-      h.replace(/"/g, "").trim().toLowerCase()
-    );
-    return lines.slice(headerIdx + 1).map(line => {
-      const cols = line.split(",").map(c => c.replace(/"/g, "").trim());
-      const obj: Record<string, string> = {};
-      headers.forEach((h, i) => { obj[h] = cols[i] || ""; });
-      return {
-        query: obj.query || obj["top queries"] || "",
-        page: obj.page || obj["landing page"] || "",
-        clicks: parseInt(obj.clicks) || 0,
-        impressions: parseInt(obj.impressions) || 0,
-        ctr: parseFloat(String(obj.ctr || "0").replace("%", "")) || 0,
-        position: parseFloat(obj.position) || 0,
-      };
-    }).filter(r => r.query || r.page);
   };
 
   const handleParse = () => {
     const parsed = parseGSCcsv(csvText);
     setRows(parsed);
-    setError(parsed.length ? "" : "Could not parse CSV. Make sure it's a GSC export with Clicks/Impressions columns.");
-  };
-
-  const handleFetchAPI = async () => {
-    if (!siteUrl) { setError("Site URL required."); return; }
-    setFetchLoading(true); setError("");
-    try {
-      const parsed = await fetchGSCData({
-        siteUrl,
-        startDate,
-        endDate,
-        dimensions: ["query", "page"],
-        rowLimit: 5000,
-      });
-      setRows(parsed);
-    } catch (e) {
-      setError("API error: " + (e as Error).message + ". Make sure your Service Account has Search Console access.");
-    } finally { setFetchLoading(false); }
+    setError(parsed.length ? "" : "Could not parse CSV. Make sure it's a GSC export.");
   };
 
   const handleAnalyze = async () => {
     if (!rows.length) { setError("Load data first."); return; }
-    setLoading(true); setAnalysis("");
+    setLoading(true); setError("");
     try {
-      const top100 = rows.slice(0, 100);
-      const summary = {
-        totalQueries: rows.length,
-        totalClicks: rows.reduce((s, r) => s + r.clicks, 0),
-        totalImpressions: rows.reduce((s, r) => s + r.impressions, 0),
-        avgCTR: (rows.reduce((s, r) => s + r.ctr, 0) / rows.length).toFixed(2),
-        avgPosition: (rows.reduce((s, r) => s + r.position, 0) / rows.length).toFixed(1),
-        topRows: top100
-      };
-      const text = await callAI(
-        `You are a Silicon Valley SEO director with 15 years experience. Analyze this Google Search Console data with extreme precision.
-
-Provide:
-1. EXECUTIVE SUMMARY (3 sentences)
-2. TOP 5 CTR OPPORTUNITIES (queries with >200 impressions but <3% CTR — list query, impressions, current CTR, recommended title fix)
-3. TOP 5 POSITION WIN TARGETS (positions 4-10 with >50 clicks — list query, position, recommended action)
-4. CONTENT GAPS (queries with >500 impressions but 0 clicks)
-5. AI OVERVIEW TARGETS (informational queries ideal for AI answer optimization)
-6. 30-DAY ACTION PLAN (numbered, specific, prioritized)
-
-Use emojis for section headers. Be specific and data-driven.`,
-        `Site data: ${JSON.stringify(summary)}`
-      );
-      setAnalysis(text);
-    } catch (e) {
-      setError("Analysis failed: " + (e as Error).message);
-    } finally { setLoading(false); }
+      const resp = await fetch("/api/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "gsc_full", data: rows, options: { siteUrl, startDate, endDate } }),
+      });
+      const json = await resp.json();
+      if (!resp.ok) throw new Error(json.error || "Analysis failed");
+      setResult(json.result);
+      onAnalysis(json.result, "gsc_full");
+    } catch (e) { setError((e as Error).message); }
+    finally { setLoading(false); }
   };
 
-  const ctrOpps = rows.filter(r => r.impressions > 100 && r.ctr < 3 && r.position < 20)
-    .sort((a, b) => b.impressions - a.impressions).slice(0, 8);
-  const posWins = rows.filter(r => r.position >= 4 && r.position <= 10)
-    .sort((a, b) => b.clicks - a.clicks).slice(0, 8);
+  const overview = result?.overview ?? null;
+  const ctrOpps = result?.ctrOpportunities ?? null;
+  const quickWins = result?.quickWins ?? null;
+  const aiTargets = result?.aiTargets ?? null;
+  const intentDist = result?.intentDistribution ?? null;
+  const recommendations = result?.recommendations ?? null;
+
+  const showStats = rows.length > 0 && result === null;
+  const statsContent = showStats ? (
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12, marginBottom: 24 }}>
+      <Stat label="Queries" value={rows.length.toLocaleString()} color={C.blue} />
+      <Stat label="Total Clicks" value={rows.reduce((s, r) => s + r.clicks, 0).toLocaleString()} color={C.green} />
+      <Stat label="Impressions" value={rows.reduce((s, r) => s + r.impressions, 0).toLocaleString()} color={C.purple} />
+      <Stat label="Avg CTR" value={(rows.reduce((s, r) => s + r.ctr, 0) / rows.length).toFixed(1) + "%"} color={C.amber} />
+      <Stat label="Avg Position" value={(rows.reduce((s, r) => s + r.position, 0) / rows.length).toFixed(1)} color={C.red} />
+      <Stat label="Potential Gains" value={overview ? String(overview.potentialClicksGain || 0) : "—"} color={C.green} sub="estimated clicks" />
+    </div>
+  ) : null;
 
   return (
     <div>
+      {/* Mode Toggle */}
       <div style={{ display: "flex", gap: 8, marginBottom: 24 }}>
         {(["upload", "api"] as const).map(m => (
           <button key={m} onClick={() => setMode(m)} style={{
-            background: mode === m ? C.blue : C.card,
-            color: mode === m ? "#fff" : C.muted,
-            border: `1px solid ${mode === m ? C.blue : C.border}`,
-            borderRadius: 8,
-            padding: "8px 18px",
-            cursor: "pointer",
-            fontSize: 13,
-            fontWeight: 600,
-            fontFamily: "inherit"
-          }}>
-            {m === "upload" ? "📁 Upload CSV Export" : "🔑 API Token"}
-          </button>
+            background: mode === m ? C.blue : C.card, color: mode === m ? "#fff" : C.muted,
+            border: `1px solid ${mode === m ? C.blue : C.border}`, borderRadius: 8, padding: "8px 18px",
+            cursor: "pointer", fontSize: 13, fontWeight: 600, fontFamily: "inherit"
+          }}>{m === "upload" ? "📁 Upload CSV" : "🔑 API Connection"}</button>
         ))}
       </div>
 
+      {/* Upload Mode */}
       {mode === "upload" && (
-        <Section title="Upload GSC Export">
-          <div style={{ display: "flex", gap: 12, marginBottom: 12, flexWrap: "wrap" }}>
+        <Section title="📊 Upload GSC Export">
+          <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
             <input type="file" accept=".csv,.tsv,.txt" onChange={handleFile} ref={fileRef} style={{ display: "none" }} />
             <Btn onClick={() => fileRef.current?.click()} color={C.purple}>📁 Select CSV File</Btn>
             <Btn onClick={handleParse} color={C.blue} disabled={!csvText}>Parse Data</Btn>
           </div>
-          <TextArea value={csvText} onChange={setCsvText} placeholder="Or paste GSC CSV data here (Performance export)…" rows={4} />
-          <div style={{ color: C.muted, fontSize: 11, marginTop: 6 }}>
-            In GSC → Performance → Export → Download CSV. Supports Queries and Pages exports.
-          </div>
+          <TextArea value={csvText} onChange={setCsvText} placeholder="Or paste GSC CSV data here…" rows={4} />
+          <div style={{ color: C.muted, fontSize: 11, marginTop: 6 }}>GSC → Performance → Export → Download CSV</div>
         </Section>
       )}
 
+      {/* API Mode */}
       {mode === "api" && (
-        <Section title="GSC API Connection (Service Account)">
-          <div style={{ display: "grid", gap: 10, marginBottom: 12 }}>
-            <div>
-              <div style={{ color: C.muted, fontSize: 11, marginBottom: 4 }}>Site URL (exact, e.g. https://example.com/)</div>
-              <Input value={siteUrl} onChange={setSiteUrl} placeholder="https://yoursite.com/" />
-            </div>
+        <Section title="🔑 Google Search Console API">
+          <div style={{ display: "grid", gap: 10 }}>
+            <Input value={siteUrl} onChange={setSiteUrl} placeholder="https://yoursite.com/" />
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              <div>
-                <div style={{ color: C.muted, fontSize: 11, marginBottom: 4 }}>Start Date</div>
-                <Input type="date" value={startDate} onChange={setStartDate} />
-              </div>
-              <div>
-                <div style={{ color: C.muted, fontSize: 11, marginBottom: 4 }}>End Date</div>
-                <Input type="date" value={endDate} onChange={setEndDate} />
-              </div>
+              <Input type="date" value={startDate} onChange={setStartDate} />
+              <Input type="date" value={endDate} onChange={setEndDate} />
             </div>
-            <Btn onClick={handleFetchAPI} loading={fetchLoading} color={C.green}>⬇️ Fetch GSC Data</Btn>
-          </div>
-          <div style={{ color: C.muted, fontSize: 11 }}>
-            Uses Service Account from <span style={{ color: C.blue }}>GSC_SERVICE_ACCOUNT_EMAIL</span> env var. Ensure the service account email has Search Console access.
+            <Btn onClick={handleAnalyze} loading={fetchLoading} color={C.green}>⬇️ Fetch & Analyze GSC</Btn>
           </div>
         </Section>
       )}
 
-      {error && <div style={{
-        color: C.red,
-        background: C.red + "11",
-        border: `1px solid ${C.red}33`,
-        borderRadius: 8,
-        padding: "10px 14px",
-        marginBottom: 16,
-        fontSize: 13
-      }}>{error}</div>}
+      {statsContent}
 
-      {rows.length > 0 && (
-        <>
-          <div style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
-            gap: 12,
-            marginBottom: 24
-          }}>
-            <Stat label="Queries" value={rows.length.toLocaleString()} color={C.blue} />
-            <Stat label="Total Clicks" value={rows.reduce((s, r) => s + r.clicks, 0).toLocaleString()} color={C.green} />
-            <Stat label="Impressions" value={rows.reduce((s, r) => s + r.impressions, 0).toLocaleString()} color={C.purple} />
-            <Stat label="Avg CTR" value={(rows.reduce((s, r) => s + r.ctr, 0) / rows.length).toFixed(1) + "%"} color={C.amber} />
-            <Stat label="Avg Position" value={(rows.reduce((s, r) => s + r.position, 0) / rows.length).toFixed(1)} color={C.red} />
+      <Btn onClick={handleAnalyze} loading={loading} color={C.green} disabled={rows.length === 0}>🧠 Run Full AI Analysis</Btn>
+
+      {loading && <LoadingSpinner />}
+
+      {/* ─── Results ─── */}
+      {result && (
+        <div style={{ marginTop: 32 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+            <h2 style={{ color: C.text, fontSize: 20, fontWeight: 800 }}>📋 Analysis Report</h2>
+            <Badge color={C.green}>🟢 Saved to History</Badge>
           </div>
 
-          <Section title="Data loaded - use CSV upload or API to analyze">
-            <Btn onClick={handleAnalyze} loading={loading} color={C.green}>🧠 Run Full AI Analysis</Btn>
-            <div style={{ marginTop: 16 }}><AnalysisBox result={analysis} loading={loading} /></div>
-          </Section>
-        </>
+          {/* Overview Stats */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12, marginBottom: 24 }}>
+            <Stat label="Total Clicks" value={(overview?.totalClicks as number)?.toLocaleString() || "—"} color={C.green} />
+            <Stat label="Total Impressions" value={(overview?.totalImpressions as number)?.toLocaleString() || "—"} color={C.blue} />
+            <Stat label="Avg CTR" value={(overview?.avgCTR as number)?.toFixed(1) + "%" || "—"} color={C.amber} />
+            <Stat label="Avg Position" value={(overview?.avgPosition as number)?.toFixed(1) || "—"} color={C.red} />
+            <Stat label="Potential Gains" value={`+${overview?.potentialClicksGain || 0}`} color={C.green} sub="estimated clicks/mo" />
+          </div>
+
+          {/* Charts Grid */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 24 }}>
+            {ctrOpps?.length ? <CTRBarchart data={ctrOpps} /> : <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 10, padding: 16, textAlign: "center", color: C.muted }}>No CTR data</div>}
+            {quickWins?.length ? <PositionScatter data={quickWins.map(w => ({ query: w.query, position: w.position, clicks: w.clicks }))} /> : <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 10, padding: 16, textAlign: "center", color: C.muted }}>No position data</div>}
+            {intentDist ? <IntentPie data={intentDist} /> : <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 10, padding: 16, textAlign: "center", color: C.muted }}>No intent data</div>}
+          </div>
+
+          {/* Recommendations */}
+          {recommendations && (
+            <Section title="🚀 AI Recommendations" accent={C.green}>
+              <div style={{ background: C.card, border: `1px solid ${C.green}44`, borderRadius: 10, padding: 16, color: C.text, fontSize: 13, lineHeight: 1.7 }}>{recommendations}</div>
+            </Section>
+          )}
+
+          {/* CTR Opportunities Table */}
+          {ctrOpps?.length ? (
+            <Section title="📈 Top CTR Opportunities" accent={C.amber}>
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                  <thead>
+                    <tr>{["Query", "Impressions", "CTR", "Position", "Clicks Lost", "Fix"].map(h => (
+                      <th key={h} style={{ textAlign: "left", padding: "8px 10px", color: C.muted, borderBottom: `1px solid ${C.border}`, fontWeight: 600, whiteSpace: "nowrap" }}>{h}</th>
+                    ))}</tr>
+                  </thead>
+                  <tbody>
+                    {ctrOpps.slice(0, 10).map((r, i) => (
+                      <tr key={i} style={{ borderBottom: `1px solid ${C.border}22` }}>
+                        <td style={{ padding: "7px 10px", color: C.text, maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.query}</td>
+                        <td style={{ padding: "7px 10px", color: C.blue, fontFamily: "monospace" }}>{r.impressions?.toLocaleString()}</td>
+                        <td style={{ padding: "7px 10px", color: C.amber, fontFamily: "monospace" }}>{r.ctr?.toFixed(1)}%</td>
+                        <td style={{ padding: "7px 10px", color: r.position <= 3 ? C.green : r.position <= 10 ? C.amber : C.red, fontFamily: "monospace" }}>{r.position?.toFixed(1)}</td>
+                        <td style={{ padding: "7px 10px", color: C.red, fontFamily: "monospace" }}>{r.estimatedClicksLost || 0}</td>
+                        <td style={{ padding: "7px 10px", color: C.green, fontSize: 11 }}>{r.fix}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Section>
+          ) : null}
+
+          {/* Quick Wins */}
+          {quickWins?.length ? (
+            <Section title="🎯 Quick Win Targets (Positions 4-10)" accent={C.green}>
+              <div style={{ display: "grid", gap: 10 }}>
+                {quickWins.slice(0, 8).map((w, i) => (
+                  <div key={i} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 8, padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div>
+                      <div style={{ color: C.text, fontWeight: 600, marginBottom: 2 }}>{w.query}</div>
+                      <div style={{ color: C.muted, fontSize: 11 }}>{w.action}</div>
+                    </div>
+                    <div style={{ textAlign: "right" }}>
+                      <div style={{ color: C.amber, fontSize: 16, fontWeight: 800 }}>#{w.position}</div>
+                      <div style={{ color: C.green, fontSize: 11 }}>+{w.estimatedTrafficGain} clicks/mo</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Section>
+          ) : null}
+
+          {/* AI Overview Targets */}
+          {aiTargets?.length ? (
+            <Section title="🤖 AI Overview Targets" accent={C.purple}>
+              <div style={{ display: "grid", gap: 10 }}>
+                {aiTargets.slice(0, 8).map((t: Record<string, unknown>, i) => (
+                  <div key={i} style={{ background: C.card, border: `1px solid ${C.purple}44`, borderRadius: 8, padding: "12px 16px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                      <span style={{ color: C.text, fontWeight: 600 }}>{t.query as string}</span>
+                      <Badge color={t.aiEligibility === 'High' ? C.green : t.aiEligibility === 'Medium' ? C.amber : C.red}>{t.aiEligibility as string} Eligibility</Badge>
+                    </div>
+                    <div style={{ color: C.muted, fontSize: 12 }}>{t.contentSuggestion as string}</div>
+                  </div>
+                ))}
+              </div>
+            </Section>
+          ) : null}
+        </div>
       )}
     </div>
   );
 }
 
-// ─── CTR Lab ───────────────────────────────────────────────────────────────
+// ─── CTR Lab ─────────────────────────────────────────────────────────────────
 function CTRTab() {
-  const [keywords, setKeywords] = useState("");
-  const [currentTitle, setCurrentTitle] = useState("");
-  const [targetKw, setTargetKw] = useState("");
-  const [intent, setIntent] = useState("informational");
-  const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState("");
-
-  const handleAnalyze = async () => {
-    setLoading(true); setResult("");
-    try {
-      const text = await callAI(
-        `You are a conversion rate optimization expert specializing in Google SERP CTR.
-Generate title tag and meta description variants that maximize click-through rate.
-
-Rules:
-- Title: 50-60 chars, include keyword, use power words
-- Meta: 140-155 chars, CTA, benefit-driven
-- Give 5 title variants (ranked best to worst with CTR prediction %)
-- Give 3 meta description variants
-- Explain WHY each choice works
-- Include: Power word list, Emotional triggers used, Schema markup recommendation
-Use emojis for sections. Be specific and actionable.`,
-        `Page/keyword: ${targetKw}
-Current title: ${currentTitle || "none provided"}
-Search intent: ${intent}
-Related queries context: ${keywords || "none"}`,
-      );
-      setResult(text);
-    } catch (e) { setResult("Error: " + (e as Error).message); }
-    finally { setLoading(false); }
-  };
-
-  return (
-    <div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 }}>
-        <div>
-          <div style={{ color: C.muted, fontSize: 11, marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.06em" }}>Target Keyword</div>
-          <Input value={targetKw} onChange={setTargetKw} placeholder="e.g. best project management software 2025" />
-        </div>
-        <div>
-          <div style={{ color: C.muted, fontSize: 11, marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.06em" }}>Search Intent</div>
-          <select value={intent} onChange={e => setIntent(e.target.value)} style={{
-            width: "100%",
-            background: C.surface,
-            color: C.text,
-            border: `1px solid ${C.border}`,
-            borderRadius: 8,
-            padding: "10px 14px",
-            fontSize: 13,
-            fontFamily: "monospace",
-            outline: "none"
-          }}>
-            <option value="informational">Informational</option>
-            <option value="commercial">Commercial Investigation</option>
-            <option value="transactional">Transactional</option>
-            <option value="navigational">Navigational</option>
-          </select>
-        </div>
-      </div>
-      <div style={{ marginBottom: 16 }}>
-        <div style={{ color: C.muted, fontSize: 11, marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.06em" }}>Current Title Tag (if optimizing existing)</div>
-        <Input value={currentTitle} onChange={setCurrentTitle} placeholder="Your current page title…" />
-      </div>
-      <div style={{ marginBottom: 16 }}>
-        <div style={{ color: C.muted, fontSize: 11, marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.06em" }}>Related Queries / Context</div>
-        <TextArea value={keywords} onChange={setKeywords} placeholder="List related queries you want to capture…" rows={3} />
-      </div>
-      <Btn onClick={handleAnalyze} loading={loading}>🔍 Generate CTR Variants</Btn>
-      <div style={{ marginTop: 20 }}><AnalysisBox result={result} loading={loading} /></div>
-    </div>
-  );
-}
-
-// ─── AI Overview & GEO ────────────────────────────────────────────────────
-function AITab() {
-  const [url, setUrl] = useState("");
   const [keyword, setKeyword] = useState("");
+  const [currentTitle, setCurrentTitle] = useState("");
+  const [intent, setIntent] = useState("informational");
+  const [context, setContext] = useState("");
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState("");
+  const [result, setResult] = useState<CTRResult | null>(null);
 
   const handleAnalyze = async () => {
-    if (!url) return;
-    setLoading(true); setResult("");
+    if (!keyword) return;
+    setLoading(true);
     try {
-      const text = await callAI(
-        `You are an SEO AI optimization expert specializing in Google's AI Overviews and GEO (Generative Engine Optimization).
-Analyze the content and provide actionable recommendations.
-
-Provide:
-1. AI OVERVIEW ELIGIBILITY (rate 1-10, explain why)
-2. CONTENT OPTIMIZATION (5 specific changes to rank in AI Overview)
-3. STRUCTURED DATA RECOMMENDATIONS (JSON-LD schema to add)
-4. ENTITY OPTIMIZATION (entities to mention, relationships to build)
-5. E-E-A-T SIGNALS (how to demonstrate Experience, Expertise, Authority, Trust)
-6. GEO STRATEGY (how to appear in AI Overviews and Google's other AI features)
-
-Use emojis. Be specific and actionable.`,
-        `Target URL: ${url}
-Target keyword/context: ${keyword || "auto-detect from page content"}`,
-      );
-      setResult(text);
-    } catch (e) { setResult("Error: " + (e as Error).message); }
+      const resp = await fetch("/api/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "ctr_optimize", data: { keyword, currentTitle, intent, context } }),
+      });
+      const json = await resp.json();
+      if (!resp.ok) throw new Error(json.error);
+      setResult(json.result);
+    } catch (e) { alert((e as Error).message); }
     finally { setLoading(false); }
   };
 
+  const titles = result?.titleVariants ?? null;
+  const metas = result?.metaVariants ?? null;
+  const schema = result?.schemaMarkup ?? null;
+
   return (
     <div>
-      <Section title="AI Overview & GEO Analyzer">
+      <Section title="🎯 CTR Optimization Lab">
         <div style={{ display: "grid", gap: 12 }}>
-          <Input value={url} onChange={setUrl} placeholder="https://example.com/blog/post" />
-          <Input value={keyword} onChange={setKeyword} placeholder="Target keyword (optional — auto-detected if blank)" />
-          <Btn onClick={handleAnalyze} loading={loading}>🧠 Analyze for AI Overview</Btn>
+          <Input value={keyword} onChange={setKeyword} placeholder="Target keyword (e.g. best project management software 2025)" />
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div>
+              <div style={{ color: C.muted, fontSize: 11, marginBottom: 4 }}>Search Intent</div>
+              <select value={intent} onChange={e => setIntent(e.target.value)} style={{ width: "100%", background: C.surface, color: C.text, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", fontSize: 13, fontFamily: "monospace", outline: "none" }}>
+                {["informational", "commercial", "transactional", "navigational"].map(i => <option key={i} value={i}>{i}</option>)}
+              </select>
+            </div>
+            <Input value={currentTitle} onChange={setCurrentTitle} placeholder="Current title (optional)" />
+          </div>
+          <TextArea value={context} onChange={setContext} placeholder="Related keywords or context for better variants…" rows={2} />
+          <Btn onClick={handleAnalyze} loading={loading}>🔍 Generate CTR Variants</Btn>
         </div>
       </Section>
-      <div style={{ marginTop: 20 }}><AnalysisBox result={result} loading={loading} /></div>
+
+      {loading && <LoadingSpinner />}
+
+      {result && !loading && (
+        <div style={{ marginTop: 24 }}>
+          {/* Title Variants */}
+          {titles?.length ? (
+            <Section title="📝 Title Tag Variants (ranked by predicted CTR)" accent={C.green}>
+              <div style={{ display: "grid", gap: 10 }}>
+                {titles.map((t, i) => (
+                  <div key={i} style={{ background: C.card, border: `1px solid ${i === 0 ? C.green + "66" : C.border}`, borderRadius: 8, padding: "12px 16px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                      <span style={{ color: C.text, fontSize: 14, fontWeight: 600 }}>{t.title}</span>
+                      <Badge color={C.green}>{t.predictedCTR} CTR</Badge>
+                    </div>
+                    {i === 0 && <div style={{ color: C.green, fontSize: 11 }}>★ Recommended</div>}
+                    {t.reasoning && <div style={{ color: C.muted, fontSize: 11, marginTop: 4 }}>{t.reasoning}</div>}
+                  </div>
+                ))}
+              </div>
+            </Section>
+          ) : null}
+
+          {/* Meta Descriptions */}
+          {metas?.length ? (
+            <Section title="📄 Meta Description Variants" accent={C.blue}>
+              <div style={{ display: "grid", gap: 10 }}>
+                {metas.map((m, i) => (
+                  <div key={i} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 8, padding: "12px 16px" }}>
+                    <div style={{ color: C.text, fontSize: 13, marginBottom: 6, lineHeight: 1.5 }}>{m.text as string}</div>
+                    <div style={{ display: "flex", justifyContent: "space-between", color: C.muted, fontSize: 11 }}>
+                      <span>Characters: {m.charCount}</span>
+                      <Badge color={C.blue}>{m.predictedCTR} CTR</Badge>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Section>
+          ) : null}
+
+          {/* Schema Recommendation */}
+          {schema && (
+            <Section title="🏷️ Schema Markup Recommendation" accent={C.purple}>
+              <div style={{ background: C.card, border: `1px solid ${C.purple}44`, borderRadius: 10, padding: 16 }}>
+                <Badge color={C.purple}>{schema}</Badge>
+                <div style={{ color: C.muted, fontSize: 12, marginTop: 8 }}>Add these schemas to your page's JSON-LD structured data to improve SERP appearance and AI Overview eligibility.</div>
+              </div>
+            </Section>
+          )}
+        </div>
+      )}
     </div>
   );
 }
 
-// ─── Trend Intelligence ────────────────────────────────────────────────────
-function TrendTab() {
+// ─── Keyword Research ────────────────────────────────────────────────────────
+function KeywordTab() {
   const [topic, setTopic] = useState("");
+  const [keywords, setKeywords] = useState("");
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState("");
+  const [result, setResult] = useState<KeywordResult | null>(null);
 
   const handleAnalyze = async () => {
-    if (!topic) return;
-    setLoading(true); setResult("");
+    if (!topic || !keywords) return;
+    setLoading(true);
     try {
-      const text = await callAI(
-        `You are a trend intelligence expert. Analyze this topic and provide SEO-driven trend insights.
-
-Provide:
-1. TREND SCORE (1-10, with reasoning)
-2. EMERGING QUERIES (10 new related queries gaining traction)
-3. CONTENT ANGLES (5 fresh angles competitors aren't covering)
-4. SERP FEATURE OPPORTUNITIES (People Also Ask, Featured Snippets, AI Overview)
-5. SEASONALITY INSIGHTS (is this trending now? timing recommendations)
-6. COMPETITOR GAPS (what are top ranking pages missing?)
-
-Use emojis. Be specific and data-driven.`,
-        `Topic: ${topic}`,
-      );
-      setResult(text);
-    } catch (e) { setResult("Error: " + (e as Error).message); }
+      const seedKeywords = keywords.split("\n").filter(k => k.trim());
+      const resp = await fetch("/api/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "keyword_research", data: { topic, seedKeywords } }),
+      });
+      const json = await resp.json();
+      if (!resp.ok) throw new Error(json.error);
+      setResult(json.result);
+    } catch (e) { alert((e as Error).message); }
     finally { setLoading(false); }
   };
 
+  const groups = result?.topGroups ?? null;
+  const questions = result?.questionKeywords ?? null;
+
   return (
     <div>
-      <Section title="Trend Intelligence">
-        <Input value={topic} onChange={setTopic} placeholder="Enter any topic to analyze trends…" />
-        <div style={{ marginTop: 12 }}>
-          <Btn onClick={handleAnalyze} loading={loading}>📈 Analyze Trends</Btn>
+      <Section title="🔬 Keyword Research & Clustering">
+        <div style={{ display: "grid", gap: 12 }}>
+          <Input value={topic} onChange={setTopic} placeholder="Topic (e.g. CRM software)" />
+          <TextArea value={keywords} onChange={setKeywords} placeholder="Seed keywords (one per line, e.g.\nCRM software\nbest CRM\nCRM for small business\ncrm pricing\ncrm comparison" rows={5} />
+          <Btn onClick={handleAnalyze} loading={loading}>🔍 Analyze Keywords</Btn>
         </div>
       </Section>
-      <div style={{ marginTop: 20 }}><AnalysisBox result={result} loading={loading} /></div>
+
+      {loading && <LoadingSpinner />}
+
+      {result && !loading && (
+        <div style={{ marginTop: 24 }}>
+          {/* Keyword Groups */}
+          {groups?.length ? (
+            <Section title="📊 Keyword Groups by Topic" accent={C.blue}>
+              <div style={{ display: "grid", gap: 12 }}>
+                {groups.map((g, i) => (
+                  <div key={i} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 10, padding: 16 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+                      <span style={{ color: C.text, fontWeight: 700, fontSize: 14 }}>{g.keyword as string}</span>
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <Badge color={C.green}>{g.volume?.toLocaleString()}/mo</Badge>
+                        <Badge color={C.amber}>${g.cpc} CPC</Badge>
+                        <Badge color={g.opportunity === 'High' ? C.green : C.muted}>{g.opportunity as string}</Badge>
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      {(g.modifiers as Array<{ keyword: string; volume: number }>)?.map((m, j) => (
+                        <span key={j} style={{ background: C.surface, color: C.muted, borderRadius: 4, padding: "2px 8px", fontSize: 11 }}>{m.keyword} ({m.volume?.toLocaleString()})</span>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Section>
+          ) : null}
+
+          {/* Question Keywords */}
+          {questions?.length ? (
+            <Section title="❓ Question Keywords (High AI Overview Potential)" accent={C.purple}>
+              <div style={{ display: "grid", gap: 8 }}>
+                {questions.map((q, i) => (
+                  <div key={i} style={{ background: C.card, border: `1px solid ${C.purple}44`, borderRadius: 8, padding: "10px 14px", display: "flex", justifyContent: "space-between" }}>
+                    <span style={{ color: C.text }}>{q.keyword as string}</span>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <span style={{ color: C.muted, fontSize: 11 }}>{q.volume?.toLocaleString()}/mo</span>
+                      <Badge color={C.purple}>{q.bestFormat as string}</Badge>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Section>
+          ) : null}
+        </div>
+      )}
     </div>
   );
 }
 
-// ─── Topic Analyzer ────────────────────────────────────────────────────────
+// ─── Topic Cluster ───────────────────────────────────────────────────────────
 function TopicTab() {
   const [seed, setSeed] = useState("");
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState("");
+  const [result, setResult] = useState<TopicResult | null>(null);
 
   const handleAnalyze = async () => {
     if (!seed) return;
-    setLoading(true); setResult("");
+    setLoading(true);
     try {
-      const text = await callAI(
-        `You are a topic cluster strategist. Build a complete topic cluster from this seed keyword.
-
-Provide:
-1. PILLAR CONTENT STRATEGY (main topic, optimal content structure)
-2. CLUSTER TOPICS (15 related topics to cover)
-3. INTERNAL LINKING STRATEGY (how to interlink for maximum SEO benefit)
-4. CONTENT GAP ANALYSIS (what your competitors haven't covered)
-5. SEARCH INTENT MAP (how to serve all 3 intent types across the cluster)
-6. PRIORITY ROADMAP (which topics to target first based on difficulty/opportunity)
-
-Use emojis. Be specific and actionable.`,
-        `Seed keyword/topic: ${seed}`,
-      );
-      setResult(text);
-    } catch (e) { setResult("Error: " + (e as Error).message); }
+      const resp = await fetch("/api/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "topic_cluster", data: { seed } }),
+      });
+      const json = await resp.json();
+      if (!resp.ok) throw new Error(json.error);
+      setResult(json.result);
+    } catch (e) { alert((e as Error).message); }
     finally { setLoading(false); }
   };
 
+  const structure = result?.clusterStructure ?? null;
+  const links = result?.internalLinkSuggestions ?? null;
+
   return (
     <div>
-      <Section title="Topic Cluster Analyzer">
-        <Input value={seed} onChange={setSeed} placeholder="Enter a seed keyword or topic…" />
+      <Section title="🔬 Topic Cluster Builder">
+        <Input value={seed} onChange={setSeed} placeholder="Seed topic/keyword (e.g. email marketing)" />
         <div style={{ marginTop: 12 }}>
-          <Btn onClick={handleAnalyze} loading={loading}>🔬 Generate Topic Cluster</Btn>
+          <Btn onClick={handleAnalyze} loading={loading}>🧠 Generate Cluster</Btn>
         </div>
       </Section>
-      <div style={{ marginTop: 20 }}><AnalysisBox result={result} loading={loading} /></div>
+
+      {loading && <LoadingSpinner />}
+
+      {result && !loading && (
+        <div style={{ marginTop: 24 }}>
+          {/* Cluster Structure */}
+          {structure?.length ? (
+            <Section title="📐 Cluster Structure" accent={C.blue}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12 }}>
+                {structure.map((cluster, i) => (
+                  <div key={i} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 10, padding: 16 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
+                      <Badge color={i === 0 ? C.green : i === 1 ? C.blue : C.muted}>{cluster.name as string}</Badge>
+                      <span style={{ color: C.muted, fontSize: 11 }}>×{(cluster.keywords as string[])?.length || 0} pages</span>
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      {(cluster.keywords as string[])?.map((kw, j) => (
+                        <span key={j} style={{ color: C.text, fontSize: 12, padding: "4px 8px", background: C.surface, borderRadius: 4 }}>{kw}</span>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Section>
+          ) : null}
+
+          {/* Internal Link Suggestions */}
+          {links?.length ? (
+            <Section title="🔗 Internal Link Strategy" accent={C.green}>
+              <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 10, padding: 16 }}>
+                <div style={{ display: "grid", gap: 8 }}>
+                  {links.map((link, i) => (
+                    <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 12px", background: C.surface, borderRadius: 6 }}>
+                      <span style={{ color: C.muted, fontSize: 12 }}>{link.from}</span>
+                      <span style={{ color: C.blue }}>→</span>
+                      <span style={{ color: C.text, fontSize: 12, fontWeight: 600 }}>{link.to}</span>
+                      <Badge color={C.green}>{link.strength}</Badge>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </Section>
+          ) : null}
+        </div>
+      )}
     </div>
   );
 }
 
-// ─── Core Web Vitals ───────────────────────────────────────────────────────
-function VitalsTab() {
-  const [url, setUrl] = useState("");
+// ─── Reports History ─────────────────────────────────────────────────────────
+function ReportsTab() {
+  const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState("");
+  const [selected, setSelected] = useState<Report | null>(null);
 
-  const handleAnalyze = async () => {
-    if (!url) return;
-    setLoading(true); setResult("");
+  const loadReports = useCallback(async () => {
+    setLoading(true);
     try {
-      const text = await callAI(
-        `You are a Core Web Vitals expert. Optimize this page for LCP, FID, and CLS.
-
-Provide:
-1. LCP OPTIMIZATION (Largest Contentful Paint — 5 specific fixes)
-2. FID/INP OPTIMIZATION (First Input Delay / Interaction to Next Paint — 5 fixes)
-3. CLS OPTIMIZATION (Cumulative Layout Shift — 5 fixes)
-4. TECHNICAL CHECKLIST (image optimization, lazy loading, font loading)
-5. PERFORMANCE BUDGET (recommended sizes for images, JS, CSS)
-6. PRIORITY ACTIONS (top 3 things to fix immediately)
-
-Use emojis. Be specific and technical.`,
-        `Page URL: ${url}`,
-      );
-      setResult(text);
-    } catch (e) { setResult("Error: " + (e as Error).message); }
+      const resp = await fetch("/api/reports");
+      const json = await resp.json();
+      setReports(json.reports || []);
+    } catch { setReports([]); }
     finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { loadReports(); }, [loadReports]);
+
+  const handleDelete = async (id: number) => {
+    await fetch(`/api/reports?id=${id}`, { method: "DELETE" });
+    setReports(prev => prev.filter(r => r.id !== id));
+    if (selected?.id === id) setSelected(null);
   };
 
   return (
     <div>
-      <Section title="Core Web Vitals Analyzer">
-        <Input value={url} onChange={setUrl} placeholder="https://example.com/page-to-audit" />
-        <div style={{ marginTop: 12 }}>
-          <Btn onClick={handleAnalyze} loading={loading}>⚡ Analyze Web Vitals</Btn>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+        <h2 style={{ color: C.text, fontSize: 18, fontWeight: 700 }}>📚 Report History</h2>
+        <Btn onClick={loadReports} color={C.blue} small>🔄 Refresh</Btn>
+      </div>
+
+      {loading ? <LoadingSpinner /> : (
+        <>
+          {reports.length === 0 ? (
+            <div style={{ textAlign: "center", padding: 40, color: C.muted }}>
+              No reports saved yet. Run an analysis to create your first report.
+            </div>
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 12 }}>
+              {reports.map(r => (
+                <div key={r.id} style={{ position: "relative" }}>
+                  <ReportCard report={r} onLoad={setSelected} />
+                  <button onClick={(e) => { e.stopPropagation(); handleDelete(r.id); }} style={{
+                    position: "absolute", top: 8, right: 8, background: C.red + "44", color: C.red,
+                    border: "none", borderRadius: 4, padding: "2px 6px", fontSize: 10, cursor: "pointer"
+                  }}>✕</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Report Detail Modal */}
+      {selected && (
+        <div style={{
+          position: "fixed", inset: 0, background: "rgba(0,0,0,0.8)", display: "flex", alignItems: "center",
+          justifyContent: "center", zIndex: 100, padding: 20
+        }} onClick={() => setSelected(null)}>
+          <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: 24, maxWidth: 800, maxHeight: "80vh", overflow: "auto" }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16 }}>
+              <h3 style={{ color: C.text, fontSize: 16, fontWeight: 700 }}>{selected.title}</h3>
+              <button onClick={() => setSelected(null)} style={{ background: "none", border: "none", color: C.muted, fontSize: 20, cursor: "pointer" }}>✕</button>
+            </div>
+            <pre style={{ color: C.muted, fontSize: 12, whiteSpace: "pre-wrap" }}>
+              {JSON.stringify(selected.data, null, 2)}
+            </pre>
+          </div>
         </div>
-      </Section>
-      <div style={{ marginTop: 20 }}><AnalysisBox result={result} loading={loading} /></div>
+      )}
     </div>
   );
 }
 
-// ─── Main App ──────────────────────────────────────────────────────────────
+// ─── Main App ────────────────────────────────────────────────────────────────
 export default function SEOMaster() {
   const [activeTab, setActiveTab] = useState("gsc");
+  const [analysisHistory, setAnalysisHistory] = useState<Array<{ data: unknown; type: string; timestamp: Date }>>([]);
+
+  const handleAnalysis = (data: unknown, type: string) => {
+    setAnalysisHistory(prev => [{ data, type, timestamp: new Date() }, ...prev]);
+  };
 
   return (
     <div style={{ minHeight: "100vh", background: C.bg }}>
       {/* Header */}
-      <header style={{
-        borderBottom: `1px solid ${C.border}`,
-        padding: "16px 24px",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between"
-      }}>
+      <header style={{ borderBottom: `1px solid ${C.border}`, padding: "16px 24px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div>
-          <h1 style={{ fontSize: 22, fontWeight: 800, color: C.text, fontFamily: "monospace" }}>
-            🔍 SEOMaster
-          </h1>
-          <p style={{ color: C.muted, fontSize: 12, marginTop: 2 }}>
-            AI-Powered SEO Analytics · Powered by MiniMax M2.7 · Hermes Agent
-          </p>
+          <h1 style={{ fontSize: 22, fontWeight: 800, color: C.text, fontFamily: "monospace" }}>🔍 SEOMaster</h1>
+          <p style={{ color: C.muted, fontSize: 12, marginTop: 2 }}>AI-Powered SEO Analytics · Powered by MiniMax M2.7</p>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
-          <Badge color={C.green}>🟢 YOLO Mode</Badge>
+          <Badge color={C.green}>🟢 YOLO</Badge>
           <Badge color={C.blue}>MiniMax M2.7</Badge>
         </div>
       </header>
 
       {/* Tab Bar */}
-      <div style={{
-        display: "flex",
-        gap: 4,
-        padding: "12px 24px",
-        borderBottom: `1px solid ${C.border}`,
-        overflowX: "auto",
-        background: C.surface
-      }}>
+      <div style={{ display: "flex", gap: 4, padding: "12px 24px", borderBottom: `1px solid ${C.border}`, overflowX: "auto", background: C.surface }}>
         {TABS.map(tab => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            style={{
-              background: activeTab === tab.id ? C.card : "transparent",
-              color: activeTab === tab.id ? C.text : C.muted,
-              border: `1px solid ${activeTab === tab.id ? C.border : "transparent"}`,
-              borderRadius: 8,
-              padding: "8px 16px",
-              cursor: "pointer",
-              fontSize: 13,
-              fontWeight: 600,
-              fontFamily: "inherit",
-              whiteSpace: "nowrap",
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-            }}
-          >
+          <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{
+            background: activeTab === tab.id ? C.card : "transparent",
+            color: activeTab === tab.id ? C.text : C.muted,
+            border: `1px solid ${activeTab === tab.id ? C.border : "transparent"}`,
+            borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 600,
+            fontFamily: "inherit", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 6,
+          }}>
             <span>{tab.icon}</span>
             <span>{tab.label}</span>
           </button>
@@ -712,12 +774,17 @@ export default function SEOMaster() {
 
       {/* Content */}
       <main style={{ padding: "24px", maxWidth: 1400, margin: "0 auto" }}>
-        {activeTab === "gsc" && <GSCTab />}
+        {activeTab === "gsc" && <GSCTab onAnalysis={handleAnalysis} />}
         {activeTab === "ctr" && <CTRTab />}
-        {activeTab === "ai" && <AITab />}
-        {activeTab === "trend" && <TrendTab />}
+        {activeTab === "ai" && <KeywordTab />}
+        {activeTab === "trend" && <TopicTab />}
         {activeTab === "topic" && <TopicTab />}
-        {activeTab === "vitals" && <VitalsTab />}
+        {activeTab === "vitals" && (
+          <div style={{ textAlign: "center", padding: 60, color: C.muted }}>
+            ⚡ Core Web Vitals analysis — coming soon. Upload GSC data to get started.
+          </div>
+        )}
+        {activeTab === "reports" && <ReportsTab />}
       </main>
     </div>
   );

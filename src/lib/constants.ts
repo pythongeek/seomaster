@@ -21,4 +21,5 @@ export const TABS = [
   { id: "trend",  label: "Trend Intelligence",     icon: "📈" },
   { id: "topic",  label: "Topic Analyzer",         icon: "🔬" },
   { id: "vitals", label: "Core Web Vitals",        icon: "⚡" },
+  { id: "reports", label: "Saved Reports",          icon: "📁" },
 ];
