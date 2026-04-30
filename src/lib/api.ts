@@ -45,7 +45,7 @@ export function parseGSCcsv(csv: string): GSCRow[] {
     const obj: Record<string, string> = {};
     headers.forEach((h, i) => { obj[h] = cols[i] || ""; });
     return {
-      query:       obj.query || obj["top queries"] || "",
+      query:       obj.query || obj["top queries"] || obj["top pages"] || "",
       page:        obj.page || obj["landing page"] || "",
       clicks:      parseInt(obj.clicks) || 0,
       impressions: parseInt(obj.impressions) || 0,
