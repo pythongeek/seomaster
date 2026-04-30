@@ -94,9 +94,9 @@ function buildPatternGroups(entries: IndexEntry[]): PatternGroup[] {
   return Object.entries(patternMap)
     .map(([pattern, groupEntries]) => {
       const priorities = groupEntries.map(e => diagnoseStatus(e.status).priority);
-      const topPriority = priorities.includes('P0 Critical') ? 'P0 Critical' :
+      const topPriority = (priorities.includes('P0 Critical') ? 'P0 Critical' :
         priorities.includes('P1 High') ? 'P1 High' :
-        priorities.includes('P2 Medium') ? 'P2 Medium' : 'P3 Low';
+        priorities.includes('P2 Medium') ? 'P2 Medium' : 'P3 Low') as 'P0 Critical' | 'P1 High' | 'P2 Medium' | 'P3 Low';
       const firstDiagnosis = diagnoseStatus(groupEntries[0].status);
       return {
         pattern,
