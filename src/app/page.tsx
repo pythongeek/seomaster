@@ -8,9 +8,18 @@ import { BarChart, Bar, LineChart, Line, ScatterChart, Scatter, XAxis, YAxis, Ca
 // ─── Types ─────────────────────────────────────────────────────────────────
 interface GSCRow { query: string; page: string; clicks: number; impressions: number; ctr: number; position: number; estimatedClicksLost?: number; fix?: string; }
 interface Report { id: number; report_type: string; title: string; data: unknown; summary?: unknown; created_at: string; }
-interface AnalyzedRow { query: string; impressions: number; ctr: number; position: number; estimatedClicksLost?: number; fix?: string; priority?: number; }
-interface QuickWin { query: string; position: number; clicks: number; estimatedTrafficGain: number; action: string; }
-interface GSCResult { overview: Record<string, unknown>; ctrOpportunities: AnalyzedRow[]; quickWins: QuickWin[]; aiTargets: Array<Record<string, unknown>>; intentDistribution: Record<string, number>; recommendations: string; }
+interface AnalyzedRow { query: string; page?: string; impressions: number; ctr: number; position: number; benchmarkCTR?: number; ctrGap?: number; ctrRatio?: number; estimatedClicksLost?: number; fix?: string; priority?: number; performanceCategory?: string; }
+interface QuickWin { query: string; page: string; position: number; clicks: number; impressions: number; estimatedTrafficGain: number; effort: string; action: string; currentCTR: number; benchmarkCTR: number; }
+interface GSCResult {
+  overview: { totalQueries: number; totalClicks: number; totalImpressions: number; avgCTR: number; avgPosition: number; potentialClicksGain: number; benchmarkClicks: number; performanceDistribution: Record<string, number>; };
+  ctrOpportunities: AnalyzedRow[];
+  quickWins: QuickWin[];
+  contentGaps: Array<{ query: string; page: string; impressions: number; position: number; issue: string; priority: string; }>;
+  aiOverviewCandidates: Array<{ query: string; page: string; intent: string; impressions: number; position: number; ctr: number; aiEligibility: string; contentSuggestion: string; }>;
+  intentDistribution: Record<string, number>;
+  ruleBasedRecommendations: string;
+  aiSynthesis?: { summary?: string; topPriorityActions?: string[]; aiOverviewStrategy?: string; contentStrategy?: string; };
+}
 interface CTRResult { titleVariants: Array<{ title: string; predictedCTR: string; reasoning?: string }>; metaVariants: Array<{ text: string; charCount: number; cta: string; predictedCTR: string }>; schemaMarkup: string; keyword: string; searchIntent: string; }
 interface KeywordResult { topGroups: Array<{ keyword: string; volume: number; cpc: number; difficulty: number; opportunity: string; modifiers: Array<{ keyword: string; volume: number }> }>; questionKeywords: Array<{ keyword: string; volume: number; cpc: number; intent: string; bestFormat: string }>; topic: string; }
 interface TopicResult { clusterStructure: Array<{ name: string; keywords: string[]; weight: number }>; internalLinkSuggestions: Array<{ from: string; to: string; anchor: string; strength: string }>; pillarTopic: string; }
@@ -183,14 +192,89 @@ function GSCTab({ onAnalysis }: { onAnalysis: (data: unknown, type: string) => v
   const [mode, setMode] = useState<"upload" | "api">("upload");
   const [csvText, setCsvText] = useState("");
   const [siteUrl, setSiteUrl] = useState("");
-  const [startDate, setStartDate] = useState("2025-01-01");
-  const [endDate, setEndDate] = useState("2025-04-01");
+  const [startDate, setStartDate] = useState(() => {
+    const d = new Date(); d.setMonth(d.getMonth() - 3);
+    return d.toISOString().split('T')[0];
+  });
+  const [endDate, setEndDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [rows, setRows] = useState<GSCRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [fetchLoading, setFetchLoading] = useState(false);
   const [result, setResult] = useState<GSCResult | null>(null);
   const [error, setError] = useState("");
+  const [dragActive, setDragActive] = useState(false);
+  const [parsedHeaders, setParsedHeaders] = useState<string[]>([]);
+  const [columnMapping, setColumnMapping] = useState<Record<string, string>>({});
+  const [showColumnMapper, setShowColumnMapper] = useState(false);
+  const [apiConnected, setApiConnected] = useState(false);
+  const [apiError, setApiError] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
+
+  const datePresets = [
+    { label: "Last 7 days", days: 7 },
+    { label: "Last 28 days", days: 28 },
+    { label: "Last 3 months", days: 90 },
+    { label: "Last 6 months", days: 180 },
+    { label: "Last 12 months", days: 365 },
+  ];
+
+  const applyDatePreset = (days: number) => {
+    const end = new Date();
+    const start = new Date();
+    start.setDate(start.getDate() - days);
+    setStartDate(start.toISOString().split('T')[0]);
+    setEndDate(end.toISOString().split('T')[0]);
+  };
+
+  const handleDrag = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === "dragenter" || e.type === "dragover") setDragActive(true);
+    else if (e.type === "dragleave") setDragActive(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+    const f = e.dataTransfer.files?.[0];
+    if (f) {
+      const reader = new FileReader();
+      reader.onload = ev => {
+        const text = ev.target?.result as string || "";
+        setCsvText(text);
+        const parsed = parseGSCcsv(text);
+        setRows(parsed);
+        if (parsed.length) {
+          detectAndAutoMapColumns(parsed);
+          setError("");
+        } else {
+          setError("Could not parse CSV. Check format or manually map columns.");
+          setShowColumnMapper(true);
+        }
+      };
+      reader.readAsText(f);
+    }
+  };
+
+  const detectAndAutoMapColumns = (parsed: GSCRow[]) => {
+    if (!parsed.length) return;
+    const firstRow = parsed[0];
+    const possibleHeaders = Object.keys(firstRow);
+    const mapping: Record<string, string> = {};
+    possibleHeaders.forEach(h => {
+      const lower = h.toLowerCase();
+      if (lower.includes('query') || lower.includes('keyword') || lower.includes('top query')) mapping['query'] = h;
+      else if (lower.includes('page') || lower.includes('url') || lower.includes('landing')) mapping['page'] = h;
+      else if (lower.includes('click')) mapping['clicks'] = h;
+      else if (lower.includes('impression')) mapping['impressions'] = h;
+      else if (lower.includes('ctr')) mapping['ctr'] = h;
+      else if (lower.includes('position') || lower.includes('pos')) mapping['position'] = h;
+    });
+    setColumnMapping(mapping);
+    setParsedHeaders(possibleHeaders);
+    setShowColumnMapper(Object.keys(mapping).length < 4);
+  };
 
   const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
@@ -199,15 +283,63 @@ function GSCTab({ onAnalysis }: { onAnalysis: (data: unknown, type: string) => v
     reader.onload = ev => {
       const text = ev.target?.result as string || "";
       setCsvText(text);
-      setRows(parseGSCcsv(text));
+      const parsed = parseGSCcsv(text);
+      setRows(parsed);
+      if (parsed.length) {
+        detectAndAutoMapColumns(parsed);
+        setError("");
+      } else {
+        setError("Could not parse CSV. Check format or manually map columns.");
+        setShowColumnMapper(true);
+      }
     };
     reader.readAsText(f);
   };
 
   const handleParse = () => {
     const parsed = parseGSCcsv(csvText);
-    setRows(parsed);
-    setError(parsed.length ? "" : "Could not parse CSV. Make sure it's a GSC export.");
+    if (parsed.length) {
+      setRows(parsed);
+      detectAndAutoMapColumns(parsed);
+      setError("");
+    } else {
+      setRows([]);
+      setError("Could not parse CSV. Make sure it's a GSC export.");
+      setShowColumnMapper(true);
+    }
+  };
+
+  const handleManualMap = (target: string, source: string) => {
+    setColumnMapping(prev => ({ ...prev, [target]: source }));
+  };
+
+  const applyColumnMapping = () => {
+    if (!csvText) return;
+    const lines = csvText.trim().split("\n");
+    const headerIdx = lines.findIndex(l => /clicks/i.test(l) && /impressions/i.test(l));
+    if (headerIdx < 0) { setError("Could not find header row"); return; }
+    const headers = lines[headerIdx].split(",").map(h => h.replace(/"/g, "").trim().toLowerCase());
+    const targetToSource: Record<string, string> = {};
+    Object.entries(columnMapping).forEach(([target, source]) => {
+      const sourceIdx = headers.indexOf(source.toLowerCase());
+      if (sourceIdx >= 0) targetToSource[target] = headers[sourceIdx];
+    });
+    const mapped: GSCRow[] = lines.slice(headerIdx + 1).map(line => {
+      const cols = line.split(",").map(c => c.replace(/"/g, "").trim());
+      const get = (t: string) => cols[headers.indexOf(targetToSource[t])] || "";
+      return {
+        query: get('query') || cols[0] || "",
+        page: get('page') || cols[1] || "",
+        clicks: parseInt(get('clicks')) || 0,
+        impressions: parseInt(get('impressions')) || 0,
+        ctr: parseFloat(String(get('ctr') || "0").replace("%", "")) || 0,
+        position: parseFloat(get('position')) || 0,
+      };
+    }).filter(r => r.query || r.page);
+    setRows(mapped);
+    setShowColumnMapper(false);
+    if (mapped.length) setError("");
+    else setError("No valid rows after mapping");
   };
 
   const handleAnalyze = async () => {
@@ -227,12 +359,34 @@ function GSCTab({ onAnalysis }: { onAnalysis: (data: unknown, type: string) => v
     finally { setLoading(false); }
   };
 
+  const handleFetchAPI = async () => {
+    if (!siteUrl) { setApiError("Site URL is required"); return; }
+    setFetchLoading(true); setApiError("");
+    try {
+      const resp = await fetch("/api/gsc", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ siteUrl, startDate, endDate, dimensions: ["query", "page"], rowLimit: 5000 }),
+      });
+      const json = await resp.json();
+      if (!resp.ok) throw new Error(json.error || "Failed to fetch GSC data");
+      const fetchedRows = json.rows || [];
+      setRows(fetchedRows);
+      if (fetchedRows.length) {
+        detectAndAutoMapColumns(fetchedRows);
+        setApiConnected(true);
+      }
+    } catch (e) { setApiError((e as Error).message); setApiConnected(false); }
+    finally { setFetchLoading(false); }
+  };
+
   const overview = result?.overview ?? null;
   const ctrOpps = result?.ctrOpportunities ?? null;
   const quickWins = result?.quickWins ?? null;
-  const aiTargets = result?.aiTargets ?? null;
+  const aiTargets = result?.aiOverviewCandidates ?? null;
   const intentDist = result?.intentDistribution ?? null;
-  const recommendations = result?.recommendations ?? null;
+  const recommendations = result?.ruleBasedRecommendations ?? null;
+  const aiSynthesis = result?.aiSynthesis ?? null;
 
   const showStats = rows.length > 0 && result === null;
   const statsContent = showStats ? (
@@ -242,7 +396,7 @@ function GSCTab({ onAnalysis }: { onAnalysis: (data: unknown, type: string) => v
       <Stat label="Impressions" value={rows.reduce((s, r) => s + r.impressions, 0).toLocaleString()} color={C.purple} />
       <Stat label="Avg CTR" value={(rows.reduce((s, r) => s + r.ctr, 0) / rows.length).toFixed(1) + "%"} color={C.amber} />
       <Stat label="Avg Position" value={(rows.reduce((s, r) => s + r.position, 0) / rows.length).toFixed(1)} color={C.red} />
-      <Stat label="Potential Gains" value={overview ? String(overview.potentialClicksGain || 0) : "—"} color={C.green} sub="estimated clicks" />
+      {overview && <Stat label="Potential Gains" value={String(overview.potentialClicksGain || 0)} color={C.green} sub="estimated clicks" />}
     </div>
   ) : null;
 
@@ -262,42 +416,169 @@ function GSCTab({ onAnalysis }: { onAnalysis: (data: unknown, type: string) => v
       {/* Upload Mode */}
       {mode === "upload" && (
         <Section title="📊 Upload GSC Export">
-          <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
+          {/* Drag & Drop Zone */}
+          <div
+            onDragEnter={handleDrag}
+            onDragLeave={handleDrag}
+            onDragOver={handleDrag}
+            onDrop={handleDrop}
+            onClick={() => fileRef.current?.click()}
+            style={{
+              border: `2px dashed ${dragActive ? C.blue : C.border}`,
+              borderRadius: 12,
+              padding: "32px",
+              textAlign: "center",
+              cursor: "pointer",
+              background: dragActive ? C.blue + "11" : C.surface,
+              transition: "all 0.2s",
+              marginBottom: 16,
+            }}
+          >
             <input type="file" accept=".csv,.tsv,.txt" onChange={handleFile} ref={fileRef} style={{ display: "none" }} />
-            <Btn onClick={() => fileRef.current?.click()} color={C.purple}>📁 Select CSV File</Btn>
-            <Btn onClick={handleParse} color={C.blue} disabled={!csvText}>Parse Data</Btn>
+            <div style={{ fontSize: 32, marginBottom: 8 }}>📂</div>
+            <div style={{ color: C.text, fontWeight: 600, marginBottom: 4 }}>
+              {dragActive ? "Drop your CSV file here" : "Drag & drop your GSC CSV or click to browse"}
+            </div>
+            <div style={{ color: C.muted, fontSize: 12 }}>Supports .csv, .tsv, .txt from GSC → Performance → Export</div>
           </div>
-          <TextArea value={csvText} onChange={setCsvText} placeholder="Or paste GSC CSV data here…" rows={4} />
+
+          {/* Quick paste area */}
+          <TextArea value={csvText} onChange={setCsvText} placeholder="Or paste GSC CSV data directly here…" rows={3} />
+          <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
+            <Btn onClick={handleParse} color={C.blue} disabled={!csvText}>Parse Data</Btn>
+            {rows.length > 0 && (
+              <Btn onClick={() => setShowColumnMapper(true)} color={C.purple} small outline>Column Mapper</Btn>
+            )}
+            {rows.length > 0 && (
+              <div style={{ display: "flex", alignItems: "center", color: C.green, fontSize: 12, fontWeight: 600, marginLeft: 8 }}>
+                ✓ {rows.length.toLocaleString()} rows parsed
+              </div>
+            )}
+          </div>
           <div style={{ color: C.muted, fontSize: 11, marginTop: 6 }}>GSC → Performance → Export → Download CSV</div>
         </Section>
+      )}
+
+      {/* Column Mapper Modal */}
+      {showColumnMapper && (
+        <div style={{
+          position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)", display: "flex", alignItems: "center",
+          justifyContent: "center", zIndex: 200, padding: 20
+        }} onClick={() => setShowColumnMapper(false)}>
+          <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: 24, maxWidth: 600, width: "100%" }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 20 }}>
+              <h3 style={{ color: C.text, fontSize: 16, fontWeight: 700 }}>🔗 Column Mapper</h3>
+              <button onClick={() => setShowColumnMapper(false)} style={{ background: "none", border: "none", color: C.muted, fontSize: 20, cursor: "pointer" }}>✕</button>
+            </div>
+            <p style={{ color: C.muted, fontSize: 12, marginBottom: 16 }}>Map your CSV columns to GSC fields. Detected headers are highlighted.</p>
+            {['query', 'page', 'clicks', 'impressions', 'ctr', 'position'].map(field => (
+              <div key={field} style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
+                <div style={{ width: 100, color: C.blue, fontSize: 13, fontWeight: 600, fontFamily: "monospace" }}>{field.toUpperCase()}</div>
+                <select value={columnMapping[field] || ""} onChange={e => handleManualMap(field, e.target.value)}
+                  style={{ flex: 1, background: C.card, color: C.text, border: `1px solid ${C.border}`, borderRadius: 6, padding: "8px 12px", fontSize: 12, fontFamily: "monospace" }}>
+                  <option value="">-- Select Column --</option>
+                  {parsedHeaders.map(h => <option key={h} value={h}>{h}</option>)}
+                </select>
+              </div>
+            ))}
+            <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
+              <Btn onClick={applyColumnMapping} color={C.green}>Apply Mapping</Btn>
+              <Btn onClick={() => setShowColumnMapper(false)} color={C.muted} outline small>Cancel</Btn>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* API Mode */}
       {mode === "api" && (
         <Section title="🔑 Google Search Console API">
+          {/* Connection status banner */}
+          {apiConnected && !apiError && (
+            <div style={{ background: C.green + "11", border: `1px solid ${C.green}44`, borderRadius: 8, padding: "10px 14px", marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ color: C.green, fontSize: 16 }}>✓</span>
+              <span style={{ color: C.green, fontSize: 13, fontWeight: 600 }}>Connected to Google Search Console</span>
+              <span style={{ color: C.muted, fontSize: 12, marginLeft: "auto" }}>{rows.length.toLocaleString()} rows loaded</span>
+            </div>
+          )}
+          {apiError && (
+            <div style={{ background: C.red + "11", border: `1px solid ${C.red}44`, borderRadius: 8, padding: "10px 14px", marginBottom: 16, color: C.red, fontSize: 13 }}>{apiError}</div>
+          )}
+
           <div style={{ display: "grid", gap: 10 }}>
             <Input value={siteUrl} onChange={setSiteUrl} placeholder="https://yoursite.com/" />
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              <Input type="date" value={startDate} onChange={setStartDate} />
-              <Input type="date" value={endDate} onChange={setEndDate} />
+            {/* Date range with presets */}
+            <div>
+              <div style={{ display: "flex", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
+                {datePresets.map(preset => (
+                  <button key={preset.days} onClick={() => applyDatePreset(preset.days)} style={{
+                    background: C.card, color: C.muted, border: `1px solid ${C.border}`, borderRadius: 6,
+                    padding: "4px 10px", fontSize: 11, cursor: "pointer", fontFamily: "inherit"
+                  }}>{preset.label}</button>
+                ))}
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                <Input type="date" value={startDate} onChange={setStartDate} />
+                <Input type="date" value={endDate} onChange={setEndDate} />
+              </div>
             </div>
-            <Btn onClick={handleAnalyze} loading={fetchLoading} color={C.green}>⬇️ Fetch & Analyze GSC</Btn>
+            <Btn onClick={handleFetchAPI} loading={fetchLoading} color={C.green}>⬇️ Fetch & Analyze GSC</Btn>
           </div>
         </Section>
       )}
 
       {statsContent}
 
-      <Btn onClick={handleAnalyze} loading={loading} color={C.green} disabled={rows.length === 0}>🧠 Run Full AI Analysis</Btn>
+      {rows.length > 0 && (
+        <div style={{ marginBottom: 16 }}>
+          <Btn onClick={handleAnalyze} loading={loading} color={C.green} disabled={rows.length === 0}>🧠 Run Full AI Analysis</Btn>
+        </div>
+      )}
 
       {loading && <LoadingSpinner />}
+
+      {/* ─── Data Preview Table ─── */}
+      {rows.length > 0 && !result && (
+        <Section title={`📋 Data Preview (${Math.min(rows.length, 100).toLocaleString()} of ${rows.length.toLocaleString()} rows)`} accent={C.muted}>
+          <div style={{ overflowX: "auto", border: `1px solid ${C.border}`, borderRadius: 8 }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, fontFamily: "monospace" }}>
+              <thead>
+                <tr style={{ background: C.surface }}>
+                  {["Query", "Page", "Clicks", "Impr", "CTR", "Pos"].map(h => (
+                    <th key={h} style={{ textAlign: "left", padding: "8px 10px", color: C.muted, borderBottom: `1px solid ${C.border}`, fontWeight: 600 }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.slice(0, 50).map((r, i) => (
+                  <tr key={i} style={{ borderBottom: `1px solid ${C.border}22` }}>
+                    <td style={{ padding: "6px 10px", color: C.text, maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.query}</td>
+                    <td style={{ padding: "6px 10px", color: C.muted, maxWidth: 150, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.page}</td>
+                    <td style={{ padding: "6px 10px", color: C.green, fontFamily: "monospace" }}>{r.clicks.toLocaleString()}</td>
+                    <td style={{ padding: "6px 10px", color: C.blue, fontFamily: "monospace" }}>{r.impressions.toLocaleString()}</td>
+                    <td style={{ padding: "6px 10px", color: C.amber, fontFamily: "monospace" }}>{r.ctr.toFixed(1)}%</td>
+                    <td style={{ padding: "6px 10px", color: r.position <= 3 ? C.green : r.position <= 10 ? C.amber : C.red, fontFamily: "monospace" }}>{r.position.toFixed(1)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {rows.length > 50 && <div style={{ color: C.muted, fontSize: 11, textAlign: "center", padding: 8 }}>Showing first 50 of {rows.length.toLocaleString()} rows — run analysis for full processing</div>}
+        </Section>
+      )}
 
       {/* ─── Results ─── */}
       {result && (
         <div style={{ marginTop: 32 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
             <h2 style={{ color: C.text, fontSize: 20, fontWeight: 800 }}>📋 Analysis Report</h2>
-            <Badge color={C.green}>🟢 Saved to History</Badge>
+            <div style={{ display: "flex", gap: 8 }}>
+              <Badge color={C.green}>🟢 Saved to History</Badge>
+              {overview?.performanceDistribution && (
+                <Badge color={overview.performanceDistribution["Critical Gap"] > 0 ? C.red : C.blue}>
+                  {overview.performanceDistribution["Outperforming"]} Outperforming
+                </Badge>
+              )}
+            </div>
           </div>
 
           {/* Overview Stats */}
@@ -307,7 +588,38 @@ function GSCTab({ onAnalysis }: { onAnalysis: (data: unknown, type: string) => v
             <Stat label="Avg CTR" value={(overview?.avgCTR as number)?.toFixed(1) + "%" || "—"} color={C.amber} />
             <Stat label="Avg Position" value={(overview?.avgPosition as number)?.toFixed(1) || "—"} color={C.red} />
             <Stat label="Potential Gains" value={`+${overview?.potentialClicksGain || 0}`} color={C.green} sub="estimated clicks/mo" />
+            <Stat label="Benchmark Clicks" value={(overview?.benchmarkClicks as number)?.toLocaleString() || "—"} color={C.purple} sub="if at benchmark" />
           </div>
+
+          {/* Performance Distribution Bar */}
+          {overview?.performanceDistribution && (
+            <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 10, padding: 16, marginBottom: 24 }}>
+              <div style={{ color: C.muted, fontSize: 12, marginBottom: 10, fontWeight: 600 }}>📊 Performance vs Industry Benchmark</div>
+              <div style={{ display: "flex", height: 24, borderRadius: 6, overflow: "hidden", gap: 2 }}>
+                {Object.entries(overview.performanceDistribution as Record<string, number>).map(([cat, count]) => {
+                  const colors: Record<string, string> = { "Outperforming": C.green, "At Benchmark": C.blue, "Underperforming": C.amber, "Critical Gap": C.red };
+                  const total = Object.values(overview.performanceDistribution as Record<string, number>).reduce((s, v) => s + v, 0);
+                  if (!count || total === 0) return null;
+                  return (
+                    <div key={cat} style={{ width: `${(count / total) * 100}%`, background: colors[cat] || C.muted, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      {count / total > 0.08 && <span style={{ color: "#fff", fontSize: 10, fontWeight: 700, fontFamily: "monospace" }}>{cat.split(' ')[0]}</span>}
+                    </div>
+                  );
+                })}
+              </div>
+              <div style={{ display: "flex", gap: 16, marginTop: 8, flexWrap: "wrap" }}>
+                {Object.entries(overview.performanceDistribution as Record<string, number>).map(([cat, count]) => {
+                  const colors: Record<string, string> = { "Outperforming": C.green, "At Benchmark": C.blue, "Underperforming": C.amber, "Critical Gap": C.red };
+                  return (
+                    <div key={cat} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <div style={{ width: 10, height: 10, borderRadius: 2, background: colors[cat] || C.muted }} />
+                      <span style={{ color: C.muted, fontSize: 11 }}>{cat}: {count}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Charts Grid */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 24 }}>
@@ -318,18 +630,53 @@ function GSCTab({ onAnalysis }: { onAnalysis: (data: unknown, type: string) => v
 
           {/* Recommendations */}
           {recommendations && (
-            <Section title="🚀 AI Recommendations" accent={C.green}>
+            <Section title="🚀 Rule-Based Recommendations" accent={C.green}>
               <div style={{ background: C.card, border: `1px solid ${C.green}44`, borderRadius: 10, padding: 16, color: C.text, fontSize: 13, lineHeight: 1.7 }}>{recommendations}</div>
             </Section>
           )}
 
-          {/* CTR Opportunities Table */}
+          {/* AI Agentic Synthesis */}
+          {aiSynthesis && (
+            <Section title="🤖 AI Agentic Synthesis" accent={C.purple}>
+              {aiSynthesis.summary && (
+                <div style={{ background: C.card, border: `1px solid ${C.purple}44`, borderRadius: 10, padding: 16, marginBottom: 16 }}>
+                  <div style={{ color: C.muted, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>Executive Summary</div>
+                  <div style={{ color: C.text, fontSize: 14, lineHeight: 1.7 }}>{aiSynthesis.summary}</div>
+                </div>
+              )}
+              {aiSynthesis.topPriorityActions?.length ? (
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ color: C.muted, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>Top 3 Priority Actions</div>
+                  {aiSynthesis.topPriorityActions.map((action, i) => (
+                    <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start", marginBottom: 8 }}>
+                      <span style={{ color: C.purple, fontSize: 16, fontWeight: 800, minWidth: 24 }}>{i + 1}.</span>
+                      <span style={{ color: C.text, fontSize: 13 }}>{action}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+              {aiSynthesis.aiOverviewStrategy && (
+                <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 8, padding: 14, marginBottom: 12 }}>
+                  <div style={{ color: C.green, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>AI Overview Strategy</div>
+                  <div style={{ color: C.text, fontSize: 13, lineHeight: 1.6 }}>{aiSynthesis.aiOverviewStrategy}</div>
+                </div>
+              )}
+              {aiSynthesis.contentStrategy && (
+                <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 8, padding: 14 }}>
+                  <div style={{ color: C.blue, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>Content Strategy</div>
+                  <div style={{ color: C.text, fontSize: 13, lineHeight: 1.6 }}>{aiSynthesis.contentStrategy}</div>
+                </div>
+              )}
+            </Section>
+          )}
+
+          {/* CTR Opportunities Table with Benchmark */}
           {ctrOpps?.length ? (
             <Section title="📈 Top CTR Opportunities" accent={C.amber}>
               <div style={{ overflowX: "auto" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
                   <thead>
-                    <tr>{["Query", "Impressions", "CTR", "Position", "Clicks Lost", "Fix"].map(h => (
+                    <tr>{["Query", "Impressions", "CTR", "Benchmark", "Gap", "Position", "Clicks Lost", "Performance", "Fix"].map(h => (
                       <th key={h} style={{ textAlign: "left", padding: "8px 10px", color: C.muted, borderBottom: `1px solid ${C.border}`, fontWeight: 600, whiteSpace: "nowrap" }}>{h}</th>
                     ))}</tr>
                   </thead>
@@ -337,11 +684,16 @@ function GSCTab({ onAnalysis }: { onAnalysis: (data: unknown, type: string) => v
                     {ctrOpps.slice(0, 10).map((r, i) => (
                       <tr key={i} style={{ borderBottom: `1px solid ${C.border}22` }}>
                         <td style={{ padding: "7px 10px", color: C.text, maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.query}</td>
-                        <td style={{ padding: "7px 10px", color: C.blue, fontFamily: "monospace" }}>{r.impressions?.toLocaleString()}</td>
-                        <td style={{ padding: "7px 10px", color: C.amber, fontFamily: "monospace" }}>{r.ctr?.toFixed(1)}%</td>
-                        <td style={{ padding: "7px 10px", color: r.position <= 3 ? C.green : r.position <= 10 ? C.amber : C.red, fontFamily: "monospace" }}>{r.position?.toFixed(1)}</td>
-                        <td style={{ padding: "7px 10px", color: C.red, fontFamily: "monospace" }}>{r.estimatedClicksLost || 0}</td>
-                        <td style={{ padding: "7px 10px", color: C.green, fontSize: 11 }}>{r.fix}</td>
+                        <td style={{ padding: "7px 10px", color: C.blue, fontFamily: "monospace" }}>{(r.impressions ?? 0).toLocaleString()}</td>
+                        <td style={{ padding: "7px 10px", color: C.amber, fontFamily: "monospace" }}>{(r.ctr ?? 0).toFixed(1)}%</td>
+                        <td style={{ padding: "7px 10px", color: C.muted, fontFamily: "monospace" }}>{(r.benchmarkCTR ?? 0).toFixed(1)}%</td>
+                        <td style={{ padding: "7px 10px", color: (r.ctrGap ?? 0) > 3 ? C.red : (r.ctrGap ?? 0) > 1 ? C.amber : C.green, fontFamily: "monospace" }}>{(r.ctrGap ?? 0) > 0 ? '-' : ''}{(r.ctrGap ?? 0).toFixed(1)}pp</td>
+<td style={{ padding: "7px 10px", color: (r.position ?? 0) <= 3 ? C.green : (r.position ?? 0) <= 10 ? C.amber : C.red, fontFamily: "monospace" }}>{(r.position ?? 0).toFixed(1)}</td>
+<td style={{ padding: "7px 10px", color: C.red, fontFamily: "monospace" }}>{r.estimatedClicksLost ?? 0}</td>
+                        <td style={{ padding: "7px 10px" }}>
+                          <Badge color={r.performanceCategory === 'Critical Gap' ? C.red : r.performanceCategory === 'Underperforming' ? C.amber : C.green}>{r.performanceCategory ?? 'Unknown'}</Badge>
+                        </td>
+                        <td style={{ padding: "7px 10px", color: C.green, fontSize: 11, maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.fix ?? ''}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -359,10 +711,12 @@ function GSCTab({ onAnalysis }: { onAnalysis: (data: unknown, type: string) => v
                     <div>
                       <div style={{ color: C.text, fontWeight: 600, marginBottom: 2 }}>{w.query}</div>
                       <div style={{ color: C.muted, fontSize: 11 }}>{w.action}</div>
+                      <div style={{ color: C.muted, fontSize: 10, marginTop: 2 }}>Page: {w.page}</div>
                     </div>
                     <div style={{ textAlign: "right" }}>
-                      <div style={{ color: C.amber, fontSize: 16, fontWeight: 800 }}>#{w.position}</div>
-                      <div style={{ color: C.green, fontSize: 11 }}>+{w.estimatedTrafficGain} clicks/mo</div>
+                      <div style={{ color: C.amber, fontSize: 16, fontWeight: 800 }}>#{w.position ?? '?'}</div>
+                      <div style={{ color: C.green, fontSize: 11 }}>+{w.estimatedTrafficGain ?? 0} clicks/mo</div>
+                      <div style={{ color: C.muted, fontSize: 10 }}>CTR: {(w.currentCTR ?? 0).toFixed(1)}% → {(w.benchmarkCTR ?? 0).toFixed(1)}%</div>
                     </div>
                   </div>
                 ))}
