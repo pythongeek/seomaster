@@ -5,12 +5,15 @@ export const C = {
   card:     "#161B22",
   border:   "#21262D",
   blue:     "#3B82F6",
+  blueDim:  "#1D4ED8",
   green:    "#10B981",
   amber:    "#F59E0B",
   red:      "#EF4444",
   purple:   "#8B5CF6",
+  cyan:     "#06B6D4",
   text:     "#E6EDF3",
   muted:    "#7D8590",
+  mutedLight: "#A1A1AA",
   sub:      "#30363D",
 };
 
