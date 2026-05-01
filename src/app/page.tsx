@@ -8,17 +8,21 @@ import { BarChart, Bar, LineChart, Line, ScatterChart, Scatter, XAxis, YAxis, Ca
 // ─── Types ─────────────────────────────────────────────────────────────────
 interface GSCRow { query: string; page: string; clicks: number; impressions: number; ctr: number; position: number; estimatedClicksLost?: number; fix?: string; }
 interface Report { id: number; report_type: string; title: string; data: unknown; summary?: unknown; created_at: string; }
-interface AnalyzedRow { query: string; page?: string; impressions: number; ctr: number; position: number; benchmarkCTR?: number; ctrGap?: number; ctrRatio?: number; estimatedClicksLost?: number; fix?: string; priority?: number; performanceCategory?: string; }
-interface QuickWin { query: string; page: string; position: number; clicks: number; impressions: number; estimatedTrafficGain: number; effort: string; action: string; currentCTR: number; benchmarkCTR: number; }
 interface GSCResult {
-  overview: { totalQueries: number; totalClicks: number; totalImpressions: number; avgCTR: number; avgPosition: number; potentialClicksGain: number; benchmarkClicks: number; performanceDistribution: Record<string, number>; };
-  ctrOpportunities: AnalyzedRow[];
-  quickWins: QuickWin[];
-  contentGaps: Array<{ query: string; page: string; impressions: number; position: number; issue: string; priority: string; }>;
-  aiOverviewCandidates: Array<{ query: string; page: string; intent: string; impressions: number; position: number; ctr: number; aiEligibility: string; contentSuggestion: string; }>;
-  intentDistribution: Record<string, number>;
-  ruleBasedRecommendations: string;
-  aiSynthesis?: { summary?: string; topPriorityActions?: string[]; aiOverviewStrategy?: string; contentStrategy?: string; };
+  overview: { totalQueries: number; totalClicks: number; totalImpressions: number; avgCTR: number; avgPosition: number; potentialClicksGain: number; benchmarkClicks: number; cannibalizedQueries: number; zeroClickQueries: number; };
+  ctrAnalysis: { overallCTR: number; benchmarkCTR: number; gap: number; atBenchmark: number; aboveBenchmark: number; belowBenchmark: number; criticalGaps: number; zeroClickQueries: number; zeroClickRate: number; };
+  quickWins: Array<{ query: string; page: string; position: number; clicks: number; impressions: number; estimatedTrafficGain: number; effort: 'low' | 'medium' | 'high'; action: string; currentCTR: number; benchmarkCTR: number; }>;
+  contentGaps: Array<{ query: string; page: string; impressions: number; position: number; zeroClickReason: string; fix: string; priority: string; }>;
+  cannibalization: Array<{ query: string; pages: Array<{ url: string; clicks: number; impressions: number; ctr: number; position: number; shareOfClicks: number; }>; totalClicks: number; totalImpressions: number; winnerUrl: string; severity: 'critical' | 'high' | 'medium'; recommendation: string; }>;
+  serpAnalysis: { totalFeaturesIdentified: number; byType: Record<string, number>; impactOnCTR: Record<string, number>; recommendations: string[]; };
+  deviceAnalysis: Array<{ device: string; totalClicks: number; totalImpressions: number; avgCTR: number; avgPosition: number; topPages: Array<{ url: string; clicks: number; impressions: number }>; opportunityCount: number; }>;
+  intentAnalysis: { distribution: Record<string, number>; clicksByIntent: Record<string, number>; impressionsByIntent: Record<string, number>; commercialRatio: number; };
+  pageHealth: Array<{ url: string; totalQueries: number; totalClicks: number; totalImpressions: number; avgCTR: number; avgPosition: number; healthScore: number; healthGrade: 'A' | 'B' | 'C' | 'D' | 'F'; issues: string[]; potentialClicksGain: number; }>;
+  aiOverviewCandidates: Array<{ query: string; page: string; position: number; impressions: number; ctr: number; intent: string; eligibility: 'high' | 'medium' | 'low'; eligibilityScore: number; optimizationFocus: string; eeatSignals: string[]; contentFormat: string; }>;
+  priorityMatrix: Array<{ query: string; page: string; opportunityScore: number; commercialValue: number; effort: 'low' | 'medium' | 'high'; impact: 'critical' | 'high' | 'medium' | 'low'; category: 'ctr' | 'content_gap' | 'cannibalization' | 'position' | 'serp'; recommendedAction: string; timeToValue: string; }>;
+  competitiveGaps: Array<{ query: string; page: string; position: number; nextTierPosition: number; clicksAboveTier: number; impressionsAboveTier: number; gapDescription: string; action: string; }>;
+  recommendations: string[];
+  aiSynthesis?: { executiveSummary?: string; criticalFindings?: string[]; winningStrategy?: string; aiOverviewBlueprint?: string; investmentPriority?: string[]; };
 }
 interface CTRResult { titleVariants: Array<{ title: string; predictedCTR: string; reasoning?: string }>; metaVariants: Array<{ text: string; charCount: number; cta: string; predictedCTR: string }>; schemaMarkup: string; keyword: string; searchIntent: string; }
 interface KeywordResult { topGroups: Array<{ keyword: string; volume: number; cpc: number; difficulty: number; opportunity: string; modifiers: Array<{ keyword: string; volume: number }> }>; questionKeywords: Array<{ keyword: string; volume: number; cpc: number; intent: string; bestFormat: string }>; topic: string; }
@@ -381,11 +385,18 @@ function GSCTab({ onAnalysis }: { onAnalysis: (data: unknown, type: string) => v
   };
 
   const overview = result?.overview ?? null;
-  const ctrOpps = result?.ctrOpportunities ?? null;
+  const ctrAnalysis = result?.ctrAnalysis ?? null;
   const quickWins = result?.quickWins ?? null;
+  const contentGaps = result?.contentGaps ?? null;
+  const cannibalization = result?.cannibalization ?? null;
+  const serpAnalysis = result?.serpAnalysis ?? null;
+  const deviceAnalysis = result?.deviceAnalysis ?? null;
+  const intentAnalysis = result?.intentAnalysis ?? null;
+  const pageHealth = result?.pageHealth ?? null;
   const aiTargets = result?.aiOverviewCandidates ?? null;
-  const intentDist = result?.intentDistribution ?? null;
-  const recommendations = result?.ruleBasedRecommendations ?? null;
+  const priorityMatrix = result?.priorityMatrix ?? null;
+  const competitiveGaps = result?.competitiveGaps ?? null;
+  const recommendations = result?.recommendations ?? null;
   const aiSynthesis = result?.aiSynthesis ?? null;
 
   const showStats = rows.length > 0 && result === null;
@@ -573,9 +584,9 @@ function GSCTab({ onAnalysis }: { onAnalysis: (data: unknown, type: string) => v
             <h2 style={{ color: C.text, fontSize: 20, fontWeight: 800 }}>📋 Analysis Report</h2>
             <div style={{ display: "flex", gap: 8 }}>
               <Badge color={C.green}>🟢 Saved to History</Badge>
-              {overview?.performanceDistribution && (
-                <Badge color={overview.performanceDistribution["Critical Gap"] > 0 ? C.red : C.blue}>
-                  {overview.performanceDistribution["Outperforming"]} Outperforming
+              {ctrAnalysis && (
+                <Badge color={ctrAnalysis.criticalGaps > 0 ? C.red : C.blue}>
+                  {ctrAnalysis.atBenchmark} At Benchmark
                 </Badge>
               )}
             </div>
@@ -589,121 +600,305 @@ function GSCTab({ onAnalysis }: { onAnalysis: (data: unknown, type: string) => v
             <Stat label="Avg Position" value={(overview?.avgPosition as number)?.toFixed(1) || "—"} color={C.red} />
             <Stat label="Potential Gains" value={`+${overview?.potentialClicksGain || 0}`} color={C.green} sub="estimated clicks/mo" />
             <Stat label="Benchmark Clicks" value={(overview?.benchmarkClicks as number)?.toLocaleString() || "—"} color={C.purple} sub="if at benchmark" />
+            <Stat label="Cannibalized" value={String(overview?.cannibalizedQueries || 0)} color={C.red} sub="queries affected" />
+            <Stat label="Zero-Click" value={String(overview?.zeroClickQueries || 0)} color={C.amber} sub="queries no clicks" />
           </div>
 
-          {/* Performance Distribution Bar */}
-          {overview?.performanceDistribution && (
-            <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 10, padding: 16, marginBottom: 24 }}>
-              <div style={{ color: C.muted, fontSize: 12, marginBottom: 10, fontWeight: 600 }}>📊 Performance vs Industry Benchmark</div>
-              <div style={{ display: "flex", height: 24, borderRadius: 6, overflow: "hidden", gap: 2 }}>
-                {Object.entries(overview.performanceDistribution as Record<string, number>).map(([cat, count]) => {
-                  const colors: Record<string, string> = { "Outperforming": C.green, "At Benchmark": C.blue, "Underperforming": C.amber, "Critical Gap": C.red };
-                  const total = Object.values(overview.performanceDistribution as Record<string, number>).reduce((s, v) => s + v, 0);
-                  if (!count || total === 0) return null;
-                  return (
-                    <div key={cat} style={{ width: `${(count / total) * 100}%`, background: colors[cat] || C.muted, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                      {count / total > 0.08 && <span style={{ color: "#fff", fontSize: 10, fontWeight: 700, fontFamily: "monospace" }}>{cat.split(' ')[0]}</span>}
-                    </div>
-                  );
-                })}
+          {/* CTR Analysis */}
+          {ctrAnalysis && (
+            <Section title="📊 CTR Analysis" accent={C.blue}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12, marginBottom: 16 }}>
+                <Stat label="Overall CTR" value={ctrAnalysis.overallCTR.toFixed(1) + "%"} color={C.amber} />
+                <Stat label="Benchmark CTR" value={ctrAnalysis.benchmarkCTR.toFixed(1) + "%"} color={C.muted} />
+                <Stat label="CTR Gap" value={(ctrAnalysis.gap > 0 ? '+' : '') + ctrAnalysis.gap.toFixed(1) + "pp"} color={ctrAnalysis.gap > 0 ? C.green : C.red} />
+                <Stat label="At Benchmark" value={String(ctrAnalysis.atBenchmark)} color={C.blue} sub="queries" />
+                <Stat label="Above Benchmark" value={String(ctrAnalysis.aboveBenchmark)} color={C.green} sub="queries" />
+                <Stat label="Below Benchmark" value={String(ctrAnalysis.belowBenchmark)} color={C.amber} sub="queries" />
+                <Stat label="Critical Gaps" value={String(ctrAnalysis.criticalGaps)} color={C.red} sub={"<50% of benchmark"} />
+                <Stat label="Zero-Click Rate" value={ctrAnalysis.zeroClickRate.toFixed(1) + "%"} color={C.purple} sub={`${ctrAnalysis.zeroClickQueries} queries`} />
               </div>
-              <div style={{ display: "flex", gap: 16, marginTop: 8, flexWrap: "wrap" }}>
-                {Object.entries(overview.performanceDistribution as Record<string, number>).map(([cat, count]) => {
-                  const colors: Record<string, string> = { "Outperforming": C.green, "At Benchmark": C.blue, "Underperforming": C.amber, "Critical Gap": C.red };
-                  return (
-                    <div key={cat} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                      <div style={{ width: 10, height: 10, borderRadius: 2, background: colors[cat] || C.muted }} />
-                      <span style={{ color: C.muted, fontSize: 11 }}>{cat}: {count}</span>
-                    </div>
-                  );
-                })}
+              {/* CTR Performance Bar */}
+              <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 10, padding: 14 }}>
+                <div style={{ color: C.muted, fontSize: 11, marginBottom: 8, fontWeight: 600 }}>CTR Performance Distribution</div>
+                <div style={{ display: "flex", height: 28, borderRadius: 6, overflow: "hidden", gap: 2 }}>
+                  {(['aboveBenchmark', 'atBenchmark', 'belowBenchmark', 'criticalGaps'] as const).map(cat => {
+                    const labels: Record<string, string> = { aboveBenchmark: "Above", atBenchmark: "At", belowBenchmark: "Below", criticalGaps: "Critical" };
+                    const colors: Record<string, string> = { aboveBenchmark: C.green, atBenchmark: C.blue, belowBenchmark: C.amber, criticalGaps: C.red };
+                    const val = ctrAnalysis[cat];
+                    const total = ctrAnalysis.aboveBenchmark + ctrAnalysis.atBenchmark + ctrAnalysis.belowBenchmark + ctrAnalysis.criticalGaps;
+                    if (!val || total === 0) return null;
+                    return (
+                      <div key={cat} style={{ width: `${(val / total) * 100}%`, background: colors[cat], display: "flex", alignItems: "center", justifyContent: "center" }}>
+                        {val / total > 0.08 && <span style={{ color: "#fff", fontSize: 10, fontWeight: 700 }}>{labels[cat]}</span>}
+                      </div>
+                    );
+                  })}
+                </div>
+                <div style={{ display: "flex", gap: 12, marginTop: 8, flexWrap: "wrap" }}>
+                  {(['aboveBenchmark', 'atBenchmark', 'belowBenchmark', 'criticalGaps'] as const).map(cat => {
+                    const labels: Record<string, string> = { aboveBenchmark: "Above Benchmark", atBenchmark: "At Benchmark", belowBenchmark: "Below Benchmark", criticalGaps: "Critical Gap" };
+                    const colors: Record<string, string> = { aboveBenchmark: C.green, atBenchmark: C.blue, belowBenchmark: C.amber, criticalGaps: C.red };
+                    const val = ctrAnalysis[cat];
+                    return (
+                      <div key={cat} style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                        <div style={{ width: 10, height: 10, borderRadius: 2, background: colors[cat] }} />
+                        <span style={{ color: C.muted, fontSize: 11 }}>{labels[cat]}: {val}</span>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
-          )}
-
-          {/* Charts Grid */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 24 }}>
-            {ctrOpps?.length ? <CTRBarchart data={ctrOpps} /> : <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 10, padding: 16, textAlign: "center", color: C.muted }}>No CTR data</div>}
-            {quickWins?.length ? <PositionScatter data={quickWins.map(w => ({ query: w.query, position: w.position, clicks: w.clicks }))} /> : <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 10, padding: 16, textAlign: "center", color: C.muted }}>No position data</div>}
-            {intentDist ? <IntentPie data={intentDist} /> : <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 10, padding: 16, textAlign: "center", color: C.muted }}>No intent data</div>}
-          </div>
-
-          {/* Recommendations */}
-          {recommendations && (
-            <Section title="🚀 Rule-Based Recommendations" accent={C.green}>
-              <div style={{ background: C.card, border: `1px solid ${C.green}44`, borderRadius: 10, padding: 16, color: C.text, fontSize: 13, lineHeight: 1.7 }}>{recommendations}</div>
             </Section>
           )}
 
-          {/* AI Agentic Synthesis */}
-          {aiSynthesis && (
-            <Section title="🤖 AI Agentic Synthesis" accent={C.purple}>
-              {aiSynthesis.summary && (
-                <div style={{ background: C.card, border: `1px solid ${C.purple}44`, borderRadius: 10, padding: 16, marginBottom: 16 }}>
-                  <div style={{ color: C.muted, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>Executive Summary</div>
-                  <div style={{ color: C.text, fontSize: 14, lineHeight: 1.7 }}>{aiSynthesis.summary}</div>
+          {/* Device Breakdown */}
+          {deviceAnalysis && deviceAnalysis.length > 0 && (
+            <Section title="📱 Device Breakdown" accent={C.cyan}>
+              <div style={{ display: "grid", gap: 12 }}>
+                {deviceAnalysis.map((dev, i) => (
+                  <div key={i} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 8, padding: "12px 16px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+                      <span style={{ color: C.text, fontWeight: 700, fontSize: 14, textTransform: "capitalize" }}>{dev.device}</span>
+                      <span style={{ color: C.muted, fontSize: 11 }}>{dev.opportunityCount} opportunities</span>
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
+                      <div style={{ textAlign: "center" }}>
+                        <div style={{ color: C.green, fontSize: 16, fontWeight: 800 }}>{dev.totalClicks.toLocaleString()}</div>
+                        <div style={{ color: C.muted, fontSize: 10 }}>Clicks</div>
+                      </div>
+                      <div style={{ textAlign: "center" }}>
+                        <div style={{ color: C.blue, fontSize: 16, fontWeight: 800 }}>{dev.totalImpressions.toLocaleString()}</div>
+                        <div style={{ color: C.muted, fontSize: 10 }}>Impressions</div>
+                      </div>
+                      <div style={{ textAlign: "center" }}>
+                        <div style={{ color: C.amber, fontSize: 16, fontWeight: 800 }}>{dev.avgCTR.toFixed(1)}%</div>
+                        <div style={{ color: C.muted, fontSize: 10 }}>Avg CTR</div>
+                      </div>
+                      <div style={{ textAlign: "center" }}>
+                        <div style={{ color: C.red, fontSize: 16, fontWeight: 800 }}>{dev.avgPosition.toFixed(1)}</div>
+                        <div style={{ color: C.muted, fontSize: 10 }}>Avg Pos</div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Section>
+          )}
+
+          {/* Intent Analysis */}
+          {intentAnalysis && (
+            <Section title="🔬 Intent Analysis" accent={C.purple}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 8, padding: 14 }}>
+                  <div style={{ color: C.muted, fontSize: 11, marginBottom: 8, fontWeight: 600 }}>Queries by Intent</div>
+                  {Object.entries(intentAnalysis.distribution).filter(([, v]) => v > 0).map(([intent, count]) => (
+                    <div key={intent} style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", borderBottom: `1px solid ${C.border}22` }}>
+                      <span style={{ color: C.text, fontSize: 12, textTransform: "capitalize" }}>{intent}</span>
+                      <span style={{ color: C.blue, fontFamily: "monospace", fontSize: 12 }}>{count as number} queries</span>
+                    </div>
+                  ))}
+                  <div style={{ marginTop: 8, padding: "8px 10px", background: C.surface, borderRadius: 6 }}>
+                    <span style={{ color: C.green, fontSize: 12, fontWeight: 700 }}>Commercial Ratio: </span>
+                    <span style={{ color: C.text, fontSize: 12 }}>{intentAnalysis.commercialRatio}% transactional/commercial</span>
+                  </div>
                 </div>
-              )}
-              {aiSynthesis.topPriorityActions?.length ? (
-                <div style={{ marginBottom: 16 }}>
-                  <div style={{ color: C.muted, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>Top 3 Priority Actions</div>
-                  {aiSynthesis.topPriorityActions.map((action, i) => (
-                    <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start", marginBottom: 8 }}>
-                      <span style={{ color: C.purple, fontSize: 16, fontWeight: 800, minWidth: 24 }}>{i + 1}.</span>
-                      <span style={{ color: C.text, fontSize: 13 }}>{action}</span>
+                <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 8, padding: 14 }}>
+                  <div style={{ color: C.muted, fontSize: 11, marginBottom: 8, fontWeight: 600 }}>Clicks by Intent</div>
+                  {Object.entries(intentAnalysis.clicksByIntent).filter(([, v]) => v > 0).map(([intent, clicks]) => (
+                    <div key={intent} style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", borderBottom: `1px solid ${C.border}22` }}>
+                      <span style={{ color: C.text, fontSize: 12, textTransform: "capitalize" }}>{intent}</span>
+                      <span style={{ color: C.green, fontFamily: "monospace", fontSize: 12 }}>{(clicks as number).toLocaleString()} clicks</span>
                     </div>
                   ))}
                 </div>
-              ) : null}
-              {aiSynthesis.aiOverviewStrategy && (
-                <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 8, padding: 14, marginBottom: 12 }}>
-                  <div style={{ color: C.green, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>AI Overview Strategy</div>
-                  <div style={{ color: C.text, fontSize: 13, lineHeight: 1.6 }}>{aiSynthesis.aiOverviewStrategy}</div>
-                </div>
-              )}
-              {aiSynthesis.contentStrategy && (
-                <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 8, padding: 14 }}>
-                  <div style={{ color: C.blue, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>Content Strategy</div>
-                  <div style={{ color: C.text, fontSize: 13, lineHeight: 1.6 }}>{aiSynthesis.contentStrategy}</div>
+              </div>
+            </Section>
+          )}
+
+          {/* SERP Analysis */}
+          {serpAnalysis && serpAnalysis.totalFeaturesIdentified > 0 && (
+            <Section title="🔍 SERP Feature Analysis" accent={C.amber}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(100px, 1fr))", gap: 10, marginBottom: 12 }}>
+                {Object.entries(serpAnalysis.byType).map(([type, count]) => (
+                  <div key={type} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 6, padding: "8px 12px", textAlign: "center" }}>
+                    <div style={{ color: C.amber, fontSize: 18, fontWeight: 800 }}>{count}</div>
+                    <div style={{ color: C.muted, fontSize: 10, textTransform: "capitalize" }}>{type.replace('_', ' ')}</div>
+                  </div>
+                ))}
+              </div>
+              {serpAnalysis.recommendations.length > 0 && (
+                <div style={{ marginTop: 8 }}>
+                  {serpAnalysis.recommendations.map((rec, i) => (
+                    <div key={i} style={{ color: C.text, fontSize: 12, padding: "4px 0", borderBottom: `1px solid ${C.border}22` }}>{rec}</div>
+                  ))}
                 </div>
               )}
             </Section>
           )}
 
-          {/* CTR Opportunities Table with Benchmark */}
-          {ctrOpps?.length ? (
-            <Section title="📈 Top CTR Opportunities" accent={C.amber}>
+          {/* Content Gaps */}
+          {contentGaps && contentGaps.length > 0 && (
+            <Section title="📝 Content Gaps (Zero-Click Queries)" accent={C.amber}>
               <div style={{ overflowX: "auto" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
                   <thead>
-                    <tr>{["Query", "Impressions", "CTR", "Benchmark", "Gap", "Position", "Clicks Lost", "Performance", "Fix"].map(h => (
-                      <th key={h} style={{ textAlign: "left", padding: "8px 10px", color: C.muted, borderBottom: `1px solid ${C.border}`, fontWeight: 600, whiteSpace: "nowrap" }}>{h}</th>
+                    <tr>{["Query", "Impressions", "Position", "Reason", "Fix", "Priority"].map(h => (
+                      <th key={h} style={{ textAlign: "left", padding: "8px 10px", color: C.muted, borderBottom: `1px solid ${C.border}`, fontWeight: 600 }}>{h}</th>
                     ))}</tr>
                   </thead>
                   <tbody>
-                    {ctrOpps.slice(0, 10).map((r, i) => (
+                    {contentGaps.slice(0, 10).map((g, i) => (
                       <tr key={i} style={{ borderBottom: `1px solid ${C.border}22` }}>
-                        <td style={{ padding: "7px 10px", color: C.text, maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.query}</td>
-                        <td style={{ padding: "7px 10px", color: C.blue, fontFamily: "monospace" }}>{(r.impressions ?? 0).toLocaleString()}</td>
-                        <td style={{ padding: "7px 10px", color: C.amber, fontFamily: "monospace" }}>{(r.ctr ?? 0).toFixed(1)}%</td>
-                        <td style={{ padding: "7px 10px", color: C.muted, fontFamily: "monospace" }}>{(r.benchmarkCTR ?? 0).toFixed(1)}%</td>
-                        <td style={{ padding: "7px 10px", color: (r.ctrGap ?? 0) > 3 ? C.red : (r.ctrGap ?? 0) > 1 ? C.amber : C.green, fontFamily: "monospace" }}>{(r.ctrGap ?? 0) > 0 ? '-' : ''}{(r.ctrGap ?? 0).toFixed(1)}pp</td>
-<td style={{ padding: "7px 10px", color: (r.position ?? 0) <= 3 ? C.green : (r.position ?? 0) <= 10 ? C.amber : C.red, fontFamily: "monospace" }}>{(r.position ?? 0).toFixed(1)}</td>
-<td style={{ padding: "7px 10px", color: C.red, fontFamily: "monospace" }}>{r.estimatedClicksLost ?? 0}</td>
-                        <td style={{ padding: "7px 10px" }}>
-                          <Badge color={r.performanceCategory === 'Critical Gap' ? C.red : r.performanceCategory === 'Underperforming' ? C.amber : C.green}>{r.performanceCategory ?? 'Unknown'}</Badge>
+                        <td style={{ padding: "6px 10px", color: C.text, maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.query}</td>
+                        <td style={{ padding: "6px 10px", color: C.blue, fontFamily: "monospace" }}>{g.impressions.toLocaleString()}</td>
+                        <td style={{ padding: "6px 10px", color: g.position <= 3 ? C.green : g.position <= 10 ? C.amber : C.red, fontFamily: "monospace" }}>{g.position.toFixed(1)}</td>
+                        <td style={{ padding: "6px 10px", color: C.muted, fontSize: 11, maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.zeroClickReason.replace('_', ' ')}</td>
+                        <td style={{ padding: "6px 10px", color: C.green, fontSize: 11, maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.fix}</td>
+                        <td style={{ padding: "6px 10px" }}>
+                          <Badge color={g.priority === 'critical' ? C.red : g.priority === 'high' ? C.amber : C.blue}>{g.priority}</Badge>
                         </td>
-                        <td style={{ padding: "7px 10px", color: C.green, fontSize: 11, maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.fix ?? ''}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
             </Section>
-          ) : null}
+          )}
+
+          {/* Cannibalization */}
+          {cannibalization && cannibalization.length > 0 && (
+            <Section title="🔗 Cannibalization Issues" accent={C.red}>
+              <div style={{ display: "grid", gap: 12 }}>
+                {cannibalization.slice(0, 8).map((cg, i) => (
+                  <div key={i} style={{ background: C.card, border: `1px solid ${C.red}44`, borderRadius: 8, padding: "12px 16px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+                      <span style={{ color: C.text, fontWeight: 600, fontSize: 13 }}>"{cg.query}"</span>
+                      <Badge color={cg.severity === 'critical' ? C.red : cg.severity === 'high' ? C.amber : C.blue}>{cg.severity}</Badge>
+                    </div>
+                    <div style={{ color: C.muted, fontSize: 11, marginBottom: 8 }}>
+                      {cg.pages.length} competing pages | Winner: <span style={{ color: C.green }}>{cg.winnerUrl.split('/').pop()}</span> (pos {cg.pages[0]?.position?.toFixed(1)})
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      {cg.pages.slice(0, 4).map((p, j) => (
+                        <div key={j} style={{ display: "flex", justifyContent: "space-between", fontSize: 11, padding: "3px 8px", background: C.surface, borderRadius: 4 }}>
+                          <span style={{ color: C.muted, maxWidth: 300, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.url.split('/').pop() || p.url}</span>
+                          <span style={{ color: C.blue }}>{p.clicks} clicks</span>
+                          <span style={{ color: C.muted }}>{p.position?.toFixed(1)}</span>
+                          <span style={{ color: C.amber }}>{p.shareOfClicks?.toFixed(0)}%</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ color: C.green, fontSize: 11, marginTop: 6, fontStyle: "italic" }}>{cg.recommendation}</div>
+                  </div>
+                ))}
+              </div>
+            </Section>
+          )}
+
+          {/* Page Health */}
+          {pageHealth && pageHealth.length > 0 && (
+            <Section title="🏥 Page Health Scores" accent={C.cyan}>
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                  <thead>
+                    <tr>{["URL", "Queries", "Clicks", "Impressions", "Avg CTR", "Avg Pos", "Grade", "Score", "Issues", "Potential Gain"].map(h => (
+                      <th key={h} style={{ textAlign: "left", padding: "8px 10px", color: C.muted, borderBottom: `1px solid ${C.border}`, fontWeight: 600 }}>{h}</th>
+                    ))}</tr>
+                  </thead>
+                  <tbody>
+                    {pageHealth.slice(0, 15).map((p, i) => {
+                      const gradeColors: Record<string, string> = { A: C.green, B: C.blue, C: C.amber, D: C.red, F: C.red };
+                      return (
+                        <tr key={i} style={{ borderBottom: `1px solid ${C.border}22` }}>
+                          <td style={{ padding: "6px 10px", color: C.text, maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.url.split('/').pop() || p.url}</td>
+                          <td style={{ padding: "6px 10px", color: C.muted, fontFamily: "monospace" }}>{p.totalQueries}</td>
+                          <td style={{ padding: "6px 10px", color: C.green, fontFamily: "monospace" }}>{p.totalClicks.toLocaleString()}</td>
+                          <td style={{ padding: "6px 10px", color: C.blue, fontFamily: "monospace" }}>{p.totalImpressions.toLocaleString()}</td>
+                          <td style={{ padding: "6px 10px", color: C.amber, fontFamily: "monospace" }}>{p.avgCTR.toFixed(1)}%</td>
+                          <td style={{ padding: "6px 10px", color: p.avgPosition <= 3 ? C.green : p.avgPosition <= 10 ? C.amber : C.red, fontFamily: "monospace" }}>{p.avgPosition.toFixed(1)}</td>
+                          <td style={{ padding: "6px 10px" }}>
+                            <span style={{ background: gradeColors[p.healthGrade] + "22", color: gradeColors[p.healthGrade], padding: "2px 8px", borderRadius: 4, fontWeight: 700, fontSize: 11 }}>{p.healthGrade}</span>
+                          </td>
+                          <td style={{ padding: "6px 10px", color: C.muted, fontFamily: "monospace" }}>{p.healthScore}</td>
+                          <td style={{ padding: "6px 10px", color: C.muted, fontSize: 10, maxWidth: 150, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.issues.slice(0, 2).join(', ')}</td>
+                          <td style={{ padding: "6px 10px", color: C.green, fontFamily: "monospace" }}>+{p.potentialClicksGain}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </Section>
+          )}
+
+          {/* Priority Matrix */}
+          {priorityMatrix && priorityMatrix.length > 0 && (
+            <Section title="🎯 Priority Matrix" accent={C.purple}>
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+                  <thead>
+                    <tr>{["Query", "Opp Score", "Comm Value", "Effort", "Impact", "Category", "Action", "Time to Value"].map(h => (
+                      <th key={h} style={{ textAlign: "left", padding: "7px 8px", color: C.muted, borderBottom: `1px solid ${C.border}`, fontWeight: 600, whiteSpace: "nowrap" }}>{h}</th>
+                    ))}</tr>
+                  </thead>
+                  <tbody>
+                    {priorityMatrix.slice(0, 15).map((item, i) => {
+                      const impactColors: Record<string, string> = { critical: C.red, high: C.amber, medium: C.blue, low: C.muted };
+                      const effortColors: Record<string, string> = { low: C.green, medium: C.amber, high: C.red };
+                      const categoryColors: Record<string, string> = { ctr: C.amber, content_gap: C.blue, cannibalization: C.red, position: C.green, serp: C.purple };
+                      return (
+                        <tr key={i} style={{ borderBottom: `1px solid ${C.border}22` }}>
+                          <td style={{ padding: "6px 8px", color: C.text, maxWidth: 150, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.query}</td>
+                          <td style={{ padding: "6px 8px", color: C.blue, fontFamily: "monospace" }}>{item.opportunityScore}</td>
+                          <td style={{ padding: "6px 8px", color: item.commercialValue > 60 ? C.green : item.commercialValue > 30 ? C.amber : C.muted, fontFamily: "monospace" }}>{item.commercialValue}</td>
+                          <td style={{ padding: "6px 8px" }}><Badge color={effortColors[item.effort]}>{item.effort}</Badge></td>
+                          <td style={{ padding: "6px 8px" }}><Badge color={impactColors[item.impact]}>{item.impact}</Badge></td>
+                          <td style={{ padding: "6px 8px" }}><Badge color={categoryColors[item.category] || C.muted}>{item.category.replace('_', ' ')}</Badge></td>
+                          <td style={{ padding: "6px 8px", color: C.muted, fontSize: 10, maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.recommendedAction}</td>
+                          <td style={{ padding: "6px 8px", color: C.cyan, fontSize: 11 }}>{item.timeToValue}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </Section>
+          )}
+
+          {/* Competitive Gaps */}
+          {competitiveGaps && competitiveGaps.length > 0 && (
+            <Section title="📈 Competitive Gaps" accent={C.cyan}>
+              <div style={{ display: "grid", gap: 10 }}>
+                {competitiveGaps.slice(0, 10).map((gap, i) => (
+                  <div key={i} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div>
+                      <div style={{ color: C.text, fontWeight: 600, fontSize: 12 }}>{gap.query}</div>
+                      <div style={{ color: C.muted, fontSize: 10 }}>{gap.gapDescription}</div>
+                      <div style={{ color: C.green, fontSize: 10 }}>{gap.action}</div>
+                    </div>
+                    <div style={{ textAlign: "right" }}>
+                      <div style={{ color: C.amber, fontSize: 14, fontWeight: 800 }}>#{gap.position?.toFixed(1)} → #{gap.nextTierPosition}</div>
+                      <div style={{ color: C.green, fontSize: 11 }}>+{gap.clicksAboveTier} clicks/mo</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Section>
+          )}
+
+          {/* Recommendations */}
+          {recommendations && recommendations.length > 0 && (
+            <Section title="🚀 Recommendations" accent={C.green}>
+              <div style={{ display: "grid", gap: 8 }}>
+                {recommendations.map((rec, i) => (
+                  <div key={i} style={{ background: C.card, border: `1px solid ${C.green}33`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 13 }}>{rec}</div>
+                ))}
+              </div>
+            </Section>
+          )}
 
           {/* Quick Wins */}
-          {quickWins?.length ? (
+          {quickWins && quickWins.length > 0 && (
             <Section title="🎯 Quick Win Targets (Positions 4-10)" accent={C.green}>
               <div style={{ display: "grid", gap: 10 }}>
                 {quickWins.slice(0, 8).map((w, i) => (
@@ -714,32 +909,90 @@ function GSCTab({ onAnalysis }: { onAnalysis: (data: unknown, type: string) => v
                       <div style={{ color: C.muted, fontSize: 10, marginTop: 2 }}>Page: {w.page}</div>
                     </div>
                     <div style={{ textAlign: "right" }}>
-                      <div style={{ color: C.amber, fontSize: 16, fontWeight: 800 }}>#{w.position ?? '?'}</div>
-                      <div style={{ color: C.green, fontSize: 11 }}>+{w.estimatedTrafficGain ?? 0} clicks/mo</div>
+                      <div style={{ color: C.amber, fontSize: 16, fontWeight: 800 }}>#{w.position?.toFixed(1)}</div>
+                      <div style={{ color: C.green, fontSize: 11 }}>+{w.estimatedTrafficGain?.toLocaleString()} clicks/mo</div>
                       <div style={{ color: C.muted, fontSize: 10 }}>CTR: {(w.currentCTR ?? 0).toFixed(1)}% → {(w.benchmarkCTR ?? 0).toFixed(1)}%</div>
+                      <Badge color={w.effort === 'low' ? C.green : w.effort === 'medium' ? C.amber : C.red}>{w.effort} effort</Badge>
                     </div>
                   </div>
                 ))}
               </div>
             </Section>
-          ) : null}
+          )}
 
           {/* AI Overview Targets */}
-          {aiTargets?.length ? (
-            <Section title="🤖 AI Overview Targets" accent={C.purple}>
-              <div style={{ display: "grid", gap: 10 }}>
-                {aiTargets.slice(0, 8).map((t: Record<string, unknown>, i) => (
-                  <div key={i} style={{ background: C.card, border: `1px solid ${C.purple}44`, borderRadius: 8, padding: "12px 16px" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-                      <span style={{ color: C.text, fontWeight: 600 }}>{t.query as string}</span>
-                      <Badge color={t.aiEligibility === 'High' ? C.green : t.aiEligibility === 'Medium' ? C.amber : C.red}>{t.aiEligibility as string} Eligibility</Badge>
-                    </div>
-                    <div style={{ color: C.muted, fontSize: 12 }}>{t.contentSuggestion as string}</div>
-                  </div>
-                ))}
+          {aiTargets && aiTargets.length > 0 && (
+            <Section title="🤖 AI Overview Candidates" accent={C.purple}>
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                  <thead>
+                    <tr>{["Query", "Position", "Impressions", "Eligibility", "Score", "Format", "Optimization Focus"].map(h => (
+                      <th key={h} style={{ textAlign: "left", padding: "8px 10px", color: C.muted, borderBottom: `1px solid ${C.border}`, fontWeight: 600 }}>{h}</th>
+                    ))}</tr>
+                  </thead>
+                  <tbody>
+                    {aiTargets.slice(0, 10).map((t, i) => {
+                      const eligColors: Record<string, string> = { high: C.green, medium: C.amber, low: C.red };
+                      return (
+                        <tr key={i} style={{ borderBottom: `1px solid ${C.border}22` }}>
+                          <td style={{ padding: "6px 10px", color: C.text, maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.query}</td>
+                          <td style={{ padding: "6px 10px", color: t.position <= 3 ? C.green : t.position <= 10 ? C.amber : C.red, fontFamily: "monospace" }}>{t.position?.toFixed(1)}</td>
+                          <td style={{ padding: "6px 10px", color: C.blue, fontFamily: "monospace" }}>{t.impressions?.toLocaleString()}</td>
+                          <td style={{ padding: "6px 10px" }}><Badge color={eligColors[t.eligibility] || C.muted}>{t.eligibility}</Badge></td>
+                          <td style={{ padding: "6px 10px", color: C.purple, fontFamily: "monospace" }}>{t.eligibilityScore}/10</td>
+                          <td style={{ padding: "6px 10px", color: C.muted, fontSize: 11 }}>{t.contentFormat}</td>
+                          <td style={{ padding: "6px 10px", color: C.green, fontSize: 10, maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.optimizationFocus}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
             </Section>
-          ) : null}
+          )}
+
+          {/* AI Agentic Synthesis */}
+          {aiSynthesis && (
+            <Section title="🤖 AI Agentic Synthesis" accent={C.purple}>
+              {aiSynthesis.executiveSummary && (
+                <div style={{ background: C.card, border: `1px solid ${C.purple}44`, borderRadius: 10, padding: 16, marginBottom: 16 }}>
+                  <div style={{ color: C.muted, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>Executive Summary</div>
+                  <div style={{ color: C.text, fontSize: 14, lineHeight: 1.7 }}>{aiSynthesis.executiveSummary as string}</div>
+                </div>
+              )}
+              {aiSynthesis.criticalFindings && Array.isArray(aiSynthesis.criticalFindings) && (
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ color: C.muted, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>Critical Findings</div>
+                  {(aiSynthesis.criticalFindings as string[]).map((finding, i) => (
+                    <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start", marginBottom: 8 }}>
+                      <span style={{ color: C.red, fontSize: 16, fontWeight: 800 }}>⚠</span>
+                      <span style={{ color: C.text, fontSize: 13 }}>{finding}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {aiSynthesis.winningStrategy && (
+                <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 8, padding: 14, marginBottom: 12 }}>
+                  <div style={{ color: C.green, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>Winning Strategy</div>
+                  <div style={{ color: C.text, fontSize: 13, lineHeight: 1.6 }}>{aiSynthesis.winningStrategy as string}</div>
+                </div>
+              )}
+              {aiSynthesis.aiOverviewBlueprint && (
+                <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 8, padding: 14, marginBottom: 12 }}>
+                  <div style={{ color: C.purple, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>AI Overview Blueprint</div>
+                  <div style={{ color: C.text, fontSize: 13, lineHeight: 1.6 }}>{aiSynthesis.aiOverviewBlueprint as string}</div>
+                </div>
+              )}
+              {aiSynthesis.investmentPriority && Array.isArray(aiSynthesis.investmentPriority) && (
+                <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 8, padding: 14 }}>
+                  <div style={{ color: C.cyan, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>Investment Priority</div>
+                  {(aiSynthesis.investmentPriority as string[]).map((item, i) => (
+                    <div key={i} style={{ color: C.text, fontSize: 12, padding: "4px 0", borderBottom: `1px solid ${C.border}22` }}>{item}</div>
+                  ))}
+                </div>
+              )}
+            </Section>
+          )}
         </div>
       )}
     </div>
