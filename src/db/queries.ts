@@ -251,8 +251,11 @@ export async function saveSerpData(data: {
   siteUrl?: string;
 }) {
   if (!db) return null;
-  const [row] = await db.insert(serpIntelligence).values(data)
-    .returning({ id: serpIntelligence.id });
+  const [row] = await db.insert(serpIntelligence).values({
+    ...data,
+    predictedFeatures: data.predictedFeatures ?? null,
+    siteUrl: data.siteUrl ?? null,
+  }).returning({ id: serpIntelligence.id });
   return row;
 }
 
