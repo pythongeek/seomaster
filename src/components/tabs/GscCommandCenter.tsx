@@ -76,8 +76,21 @@ export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
   }, [detectAndAutoMapColumns]);
 
   const handleDrag = (e: React.DragEvent) => { e.preventDefault(); e.stopPropagation(); setDragActive(e.type === "dragenter" || e.type === "dragover"); };
-  const handleDrop = (e: React.DragEvent) => { e.preventDefault(); e.stopPropagation(); setDragActive(false); const f = e.dataTransfer.files?.[0]; if (f) { const r = new FileReader(); r.onload = ev => processFile((ev.target?.result as string) || ""); r.readAsText(f); } };
-  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => { const f = e.target.files?.[0]; if (f) { const r = new FileReader(); r.onload = ev => processFile((ev.target?.result as string) || ""); r.readAsText(f); } };
+  const processFiles = async (files: File[]) => {
+    let combinedText = "";
+    let combinedRows: GSCRow[] = [];
+    for (const f of files) {
+      const text = await f.text();
+      combinedText += text + "\n";
+      combinedRows = combinedRows.concat(parseGSCcsv(text));
+    }
+    setCsvText(combinedText);
+    setRows(combinedRows);
+    if (combinedRows.length) { detectAndAutoMapColumns(combinedRows); setError(""); }
+    else { setError("Could not parse CSV. Check format."); setShowColumnMapper(true); }
+  };
+  const handleDrop = async (e: React.DragEvent) => { e.preventDefault(); e.stopPropagation(); setDragActive(false); const files = Array.from(e.dataTransfer.files || []); if (files.length) await processFiles(files); };
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => { const files = Array.from(e.target.files || []); if (files.length) await processFiles(files); };
   const handleParse = () => processFile(csvText);
 
   const applyColumnMapping = () => {
@@ -159,7 +172,7 @@ export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
             className={`border-2 border-dashed rounded-xl p-8 text-center transition-all duration-200 cursor-pointer ${dragActive ? "border-blue bg-blue/5" : "border-border hover:border-muted"}`}
             onDragEnter={handleDrag} onDragOver={handleDrag} onDragLeave={handleDrag}
             onDrop={handleDrop} onClick={() => fileRef.current?.click()}>
-            <input type="file" accept=".csv,.tsv,.txt" onChange={handleFile} ref={fileRef} className="hidden" />
+            <input type="file" accept=".csv,.tsv,.txt" onChange={handleFile} ref={fileRef} className="hidden" multiple />
             <div className="text-3xl mb-2">{dragActive ? "📥" : "📊"}</div>
             <div className="text-text font-semibold mb-1">Drop CSV here or click to upload</div>
             <div className="text-muted text-xs">Supports GSC CSV exports with query, page, clicks, impressions, CTR, position columns</div>

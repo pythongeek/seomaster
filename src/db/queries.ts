@@ -71,6 +71,13 @@ export async function initDB() {
         created_at TIMESTAMP DEFAULT NOW()
       )
     `);
+    try {
+      await (db as ReturnType<typeof import("drizzle-orm/neon-http").drizzle>).execute(rawSql`
+        ALTER TABLE serp_intelligence ADD COLUMN IF NOT EXISTS site_url TEXT;
+      `);
+    } catch (e) {
+      // Ignore if it fails
+    }
   } catch (e) {
     console.warn("initDB warning:", e);
   }

@@ -28,12 +28,14 @@ export function RegexFilter() {
   });
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    const reader = new FileReader();
-    reader.onload = ev => setCsvText((ev.target?.result as string) || "");
-    reader.readAsText(f);
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    let combinedText = "";
+    for (const f of files) {
+      combinedText += (await f.text()) + "\n";
+    }
+    setCsvText(combinedText);
   };
 
   const handleAnalyze = async () => {
@@ -75,7 +77,7 @@ export function RegexFilter() {
       <Section title="🔍 Regex Search Console Filter">
         <div className="grid gap-3">
           <div className="flex gap-2.5 flex-wrap">
-            <input type="file" accept=".csv,.tsv,.txt" onChange={handleFile} ref={fileRef} className="hidden" />
+            <input type="file" accept=".csv,.tsv,.txt" onChange={handleFile} ref={fileRef} className="hidden" multiple />
             {!gscRows.length && <Button variant="outline" onClick={() => fileRef.current?.click()}>📁 Select CSV</Button>}
             <Button onClick={handleAnalyze} loading={loading} disabled={!gscRows.length && !csvText}>🔍 Run Filter</Button>
           </div>
