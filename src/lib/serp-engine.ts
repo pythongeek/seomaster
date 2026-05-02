@@ -79,7 +79,14 @@ function adjustCTRForFeatures(baseCTR: number, position: number, features: SERPF
 /**
  * Core engine to determine the most accurate CTR benchmark for a query.
  */
-export async function getDynamicBenchmark(query: string, position: number, intent: string, actualCtr?: number, siteUrl?: string): Promise<SERPIntelligence> {
+export async function getDynamicBenchmark(
+  query: string, 
+  position: number, 
+  intent: string, 
+  actualCtr?: number, 
+  siteUrl?: string,
+  skipSave = false
+): Promise<SERPIntelligence> {
   const posBucket = Math.round(position);
   if (posBucket > 20) {
     return {
@@ -107,9 +114,8 @@ export async function getDynamicBenchmark(query: string, position: number, inten
   }
 
   // Self-learning: If we have an actual CTR from the current GSC upload, learn from it
-  if (actualCtr !== undefined && actualCtr > 0 && actualCtr < 100) {
+  if (!skipSave && actualCtr !== undefined && actualCtr > 0 && actualCtr < 100) {
     // Only learn if the CTR isn't absurd (e.g. 1 impression, 1 click = 100%)
-    // In production, we'd weight this by impressions, but this is a V1 self-learning model
     await saveSerpData({
       query,
       positionBucket: posBucket,

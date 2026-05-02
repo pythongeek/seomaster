@@ -31,25 +31,113 @@ export async function callAI(systemPrompt: string, userContent: string): Promise
 }
 
 // ─── CSV Parser ────────────────────────────────────────────────────────────
+export function splitCSVLine(line: string): string[] {
+  const result: string[] = [];
+  let current = "";
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    if (char === '"' && line[i + 1] === '"') {
+      current += '"';
+      i++;
+    } else if (char === '"') {
+      inQuotes = !inQuotes;
+    } else if (char === ',' && !inQuotes) {
+      result.push(current.trim());
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+  result.push(current.trim());
+  return result;
+}
+
+// ─── CSV Parser ────────────────────────────────────────────────────────────
 export function parseGSCcsv(csv: string): GSCRow[] {
-  const lines = csv.trim().split("\n");
-  const headerIdx = lines.findIndex(l =>
-    /clicks/i.test(l) && /impressions/i.test(l)
+  // Robust CSV parsing for quoted fields and commas
+  const rows: string[][] = [];
+  let currentRow: string[] = [];
+  let currentField = "";
+  let inQuotes = false;
+
+  // Handle BOM if present
+  let cleanCsv = csv;
+  if (csv.charCodeAt(0) === 0xFEFF) {
+    cleanCsv = csv.slice(1);
+  }
+
+  for (let i = 0; i < cleanCsv.length; i++) {
+    const char = cleanCsv[i];
+    const nextChar = cleanCsv[i + 1];
+
+    if (inQuotes) {
+      if (char === '"' && nextChar === '"') {
+        currentField += '"';
+        i++;
+      } else if (char === '"') {
+        inQuotes = false;
+      } else {
+        currentField += char;
+      }
+    } else {
+      if (char === '"') {
+        inQuotes = true;
+      } else if (char === ',') {
+        currentRow.push(currentField.trim());
+        currentField = "";
+      } else if (char === '\n' || char === '\r') {
+        currentRow.push(currentField.trim());
+        if (currentRow.length > 1 || (currentRow.length === 1 && currentRow[0] !== "")) {
+          rows.push(currentRow);
+        }
+        currentRow = [];
+        currentField = "";
+        if (char === '\r' && nextChar === '\n') i++;
+      } else {
+        currentField += char;
+      }
+    }
+  }
+  
+  if (currentField || currentRow.length > 0) {
+    currentRow.push(currentField.trim());
+    if (currentRow.length > 1 || (currentRow.length === 1 && currentRow[0] !== "")) {
+      rows.push(currentRow);
+    }
+  }
+
+  const headerIdx = rows.findIndex(r =>
+    r.some(c => /clicks/i.test(c)) && r.some(c => /impressions/i.test(c))
   );
   if (headerIdx < 0) return [];
-  const headers = lines[headerIdx].split(",").map(h =>
-    h.replace(/"/g, "").trim().toLowerCase()
-  );
-  return lines.slice(headerIdx + 1).map(line => {
-    const cols = line.split(",").map(c => c.replace(/"/g, "").trim());
+
+  const headers = rows[headerIdx].map(h => h.toLowerCase().replace(/"/g, "").trim());
+  
+  return rows.slice(headerIdx + 1).map(row => {
     const obj: Record<string, string> = {};
-    headers.forEach((h, i) => { obj[h] = cols[i] || ""; });
+    headers.forEach((h, i) => { obj[h] = row[i] || ""; });
+    
+    const topPages = obj["top pages"] || "";
+    const topQueries = obj["top queries"] || "";
+    const isUrl = (s: string) => s.startsWith("http") || s.includes("/");
+
+    let query = obj.query || topQueries;
+    let page = obj.page || obj["landing page"] || topPages;
+
+    // Smart swap: if query looks like a URL and page is empty, swap them
+    // This is common in "Pages" exports where the URL is in the first column
+    if (query && !page && isUrl(query)) {
+      page = query;
+      query = "";
+    }
+
     return {
-      query:       obj.query || obj["top queries"] || obj["top pages"] || "",
-      page:        obj.page || obj["landing page"] || "",
-      clicks:      parseInt(obj.clicks) || 0,
-      impressions: parseInt(obj.impressions) || 0,
-      ctr:         parseFloat(String(obj.ctr || "0").replace("%", "")) || 0,
+      query,
+      page,
+      clicks:      parseInt(obj.clicks.replace(/,/g, "")) || 0,
+      impressions: parseInt(obj.impressions.replace(/,/g, "")) || 0,
+      ctr:         parseFloat(String(obj.ctr || "0").replace("%", "").replace(/,/g, "")) || 0,
       position:    parseFloat(obj.position) || 0,
     };
   }).filter(r => r.query || r.page);

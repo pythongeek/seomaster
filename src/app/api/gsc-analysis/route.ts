@@ -1,24 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { initDB, saveReport, saveGSCSnapshot } from '@/db/queries';
+import { getGenericBenchmark, getDynamicBenchmark } from '@/lib/serp-engine';
+import { callMiniMaxRaw, extractJSON } from '@/lib/ai-client';
+import { AISynthesisSchema } from '@/lib/ai-schemas';
 
 export const runtime = 'nodejs';
-
-const CTR_CURVE: Record<number, number> = {
-  1: 28.5, 2: 15.7, 3: 11.0, 4: 8.0,  5: 5.9,
-  6: 4.4,  7: 3.3,  8: 2.6,  9: 2.1,  10: 1.7,
-  11: 1.3, 12: 1.1, 13: 0.9, 14: 0.8, 15: 0.7,
-  16: 0.6, 17: 0.5, 18: 0.5, 19: 0.4, 20: 0.4,
-};
-
-const INTENT_CTR_MULTIPLIER: Record<string, number> = {
-  navigational: 1.25, transactional: 0.85, commercial: 0.90, informational: 1.05, local: 0.95,
-};
-
-function benchmarkCTR(position: number, intent = 'informational'): number {
-  const pos = Math.min(Math.max(Math.round(position), 1), 20);
-  const base = CTR_CURVE[pos] ?? (position > 20 ? 0.2 : 1.0);
-  return base * (INTENT_CTR_MULTIPLIER[intent] ?? 1.0);
-}
 
 interface GSCRow {
   query: string; page: string;
@@ -54,7 +40,7 @@ function classifyIntent(q: string): { intent: string; category: string; isQuesti
 }
 
 function calcOpportunityScore(r: GSCRow, intent: string): number {
-  const bench = benchmarkCTR(r.position, intent);
+  const bench = getGenericBenchmark(r.position);
   const ctrGap = Math.max(0, bench - r.ctr);
   const impactScore = r.impressions * (ctrGap / 100);
   const qualityMultiplier = r.impressions >= 1000 ? 1.5 : r.impressions >= 200 ? 1.0 : 0.5;
@@ -142,7 +128,7 @@ function scoreAIOverviewEligibility(r: GSCRow, intent: string): { score: number;
 function generateTitleFix(r: GSCRow, intent: string): string {
   const q = r.query;
   const pos = r.position;
-  const bench = benchmarkCTR(pos, intent);
+  const bench = getGenericBenchmark(pos);
   const gap = bench - r.ctr;
 
   if (gap < 0.5) return 'CTR is already at or above benchmark — monitor and maintain';
@@ -190,9 +176,9 @@ function positionBands(rows: GSCRow[]) {
         clicks: band.clicks,
         impressions: band.impressions,
         avgCTR: band.queries ? parseFloat((band.ctr / band.queries).toFixed(2)) : 0,
-        benchmarkCTR: parseFloat(benchmarkCTR((band.min + band.max) / 2).toFixed(2)),
+        benchmarkCTR: parseFloat(getGenericBenchmark((band.min + band.max) / 2).toFixed(2)),
         efficiency: band.queries && band.impressions
-          ? parseFloat(((band.clicks / band.impressions) * 100 / Math.max(benchmarkCTR((band.min + band.max) / 2), 0.1)).toFixed(2))
+          ? parseFloat(((band.clicks / band.impressions) * 100 / Math.max(getGenericBenchmark((band.min + band.max) / 2), 0.1)).toFixed(2))
           : 0,
       }
     ])
@@ -219,7 +205,7 @@ function siteHealthScore(rows: GSCRow[]): { score: number; grade: string; breakd
   const p1Ratio = rows.filter(r => r.position <= 10).length / rows.length;
   const zeroClickRatio = rows.filter(r => r.clicks === 0).length / rows.length;
   const highCTRRatio = rows.filter(r => {
-    const bench = benchmarkCTR(r.position);
+    const bench = getGenericBenchmark(r.position);
     return r.ctr >= bench * 0.9;
   }).length / rows.length;
 
@@ -245,32 +231,6 @@ function siteHealthScore(rows: GSCRow[]): { score: number; grade: string; breakd
   };
 }
 
-async function callAI(system: string, user: string, maxTokens = 3000): Promise<string> {
-  const BASE = process.env.ANTHROPIC_BASE_URL || 'https://api.minimax.io/anthropic';
-  const KEY  = process.env.ANTHROPIC_AUTH_TOKEN || process.env.OPENROUTER_API_KEY || '';
-  const MODEL = process.env.ANTHROPIC_MODEL || 'MiniMax-M2.7';
-  if (!KEY) throw new Error('AI API key not configured');
-
-  const resp = await fetch(`${BASE}/v1/messages`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${KEY}`,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({ model: MODEL, max_tokens: maxTokens, stream: false, system, messages: [{ role: 'user', content: user }] }),
-  });
-  const text = await resp.text();
-  if (!resp.ok) {
-    let msg = `AI error ${resp.status}`;
-    try { const p = JSON.parse(text); msg = p.error?.error?.message || p.error?.message || msg; } catch {}
-    throw new Error(msg);
-  }
-  const data = JSON.parse(text);
-  if (data.error) throw new Error(data.error?.message || JSON.stringify(data.error));
-  return data.content?.map((b: { text?: string }) => b.text || '').join('') || '';
-}
-
 export async function POST(req: NextRequest) {
   try {
     await initDB();
@@ -288,7 +248,7 @@ export async function POST(req: NextRequest) {
 
     const scored: ScoredRow[] = rows.map((r: GSCRow) => {
       const { intent } = classifyIntent(r.query);
-      const bench = benchmarkCTR(r.position, intent);
+      const bench = getGenericBenchmark(r.position);
       const ctrGap = bench - r.ctr;
       const ctrRatio = r.ctr / Math.max(bench, 0.01);
       const oScore = calcOpportunityScore(r, intent);
@@ -312,8 +272,7 @@ export async function POST(req: NextRequest) {
     const avgPosition = rows.reduce((s: number, r: GSCRow) => s + r.position, 0) / rows.length;
 
     const benchmarkClicks = rows.reduce((s: number, r: GSCRow) => {
-      const { intent } = classifyIntent(r.query);
-      return s + r.impressions * benchmarkCTR(r.position, intent) / 100;
+      return s + r.impressions * getGenericBenchmark(r.position) / 100;
     }, 0);
     const potentialClicksGain = Math.round(Math.max(0, benchmarkClicks - totalClicks));
 
@@ -480,7 +439,7 @@ Provide expert SEO synthesis in this EXACT JSON structure (no markdown fences):
   "quickestWin": "Single highest-ROI action that can be done this week"
 }`;
 
-      const aiRaw = await callAI(
+      const aiRaw = await callMiniMaxRaw(
         'You are a senior SEO strategist. You receive fully-processed algorithmic analysis. Return only valid JSON matching the schema. No markdown, no code fences, no explanation outside the JSON.',
         aiPrompt,
         2000

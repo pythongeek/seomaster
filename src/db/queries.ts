@@ -248,6 +248,32 @@ export async function markJobProcessing(id: string) {
 // SERP INTELLIGENCE
 // ─────────────────────────────────────────────────────────────────────────────
 
+export async function saveSerpDataBatch(data: Array<{
+  query: string;
+  positionBucket: number;
+  intent: string;
+  actualCtr: number;
+  predictedCtr: number;
+  predictedFeatures?: unknown;
+  siteUrl?: string;
+}>) {
+  if (!db || !data.length) return null;
+  // Chunk batch to avoid Neon limits
+  const CHUNK_SIZE = 100;
+  for (let i = 0; i < data.length; i += CHUNK_SIZE) {
+    const chunk = data.slice(i, i + CHUNK_SIZE);
+    try {
+      await db.insert(serpIntelligence).values(chunk.map(d => ({
+        ...d,
+        predictedFeatures: d.predictedFeatures ?? null,
+        siteUrl: d.siteUrl ?? null,
+      })));
+    } catch (e) {
+      console.warn("Failed to save SERP batch:", e);
+    }
+  }
+}
+
 export async function saveSerpData(data: {
   query: string;
   positionBucket: number;
@@ -269,13 +295,9 @@ export async function saveSerpData(data: {
 export async function getHistoricalCTR(positionBucket: number, intent?: string) {
   if (!db) return null;
   try {
-    const rows = intent
-      ? await db.select().from(serpIntelligence)
-          .where(eq(serpIntelligence.positionBucket, positionBucket))
-          .limit(200)
-      : await db.select().from(serpIntelligence)
-          .where(eq(serpIntelligence.positionBucket, positionBucket))
-          .limit(200);
+    const rows = await db.select().from(serpIntelligence)
+      .where(eq(serpIntelligence.positionBucket, positionBucket))
+      .limit(200);
 
     if (!rows.length) return null;
 

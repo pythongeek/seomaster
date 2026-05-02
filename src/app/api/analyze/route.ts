@@ -767,13 +767,35 @@ export async function POST(req: NextRequest) {
     const avgPosition = rows.reduce((s, r) => s + (r.position || 0), 0) / rows.length;
 
     // ─── Enrich every row ─────────────────────────────────────────────────
+    // Prepare for batch learning
+    const learningData: any[] = [];
+    
     const enriched: EnrichedRow[] = await Promise.all(rows.map(async (r) => {
-      const intent = classifyIntent(r.query);
-      const serpIntel = await getDynamicBenchmark(r.query, r.position, intent.intent, r.ctr, options?.siteUrl);
+      // If query is missing but page is present, it's a page-only row
+      // We still want to classify it if possible or provide generic data
+      const queryForIntel = r.query || r.page || "unknown";
+      const intent = classifyIntent(queryForIntel);
+      
+      // Get benchmark (skip immediate DB save for performance)
+      const serpIntel = await getDynamicBenchmark(queryForIntel, r.position, intent.intent, r.ctr, options?.siteUrl, true);
+      
+      // Queue for batch save
+      if (r.ctr > 0 && r.ctr < 100 && r.query) {
+        learningData.push({
+          query: r.query,
+          positionBucket: Math.round(r.position),
+          intent: intent.intent,
+          actualCtr: r.ctr,
+          predictedCtr: serpIntel.predictedCTR,
+          predictedFeatures: serpIntel.features,
+          siteUrl: options?.siteUrl
+        });
+      }
+
       const benchmarkCTR = serpIntel.predictedCTR;
       const ctrGap = benchmarkCTR - r.ctr;
       const ctrRatio = benchmarkCTR > 0 ? r.ctr / benchmarkCTR : 0;
-      const serpFeatures = detectSERPFeatures(r.query, r.position);
+      const serpFeatures = detectSERPFeatures(queryForIntel, r.position);
       const commercialValue = scoreCommercialValue(r, intent);
       const trafficValue = scoreTrafficValue(r);
       const positionMomentum = r.position >= 4 && r.position <= 10 ? (10 - r.position) * 10 : 0;
@@ -796,6 +818,12 @@ export async function POST(req: NextRequest) {
         trendDirection: 'stable' as const,
       };
     }));
+
+    // Trigger batch save in background (don't await for the API response)
+    if (learningData.length > 0) {
+      const { saveSerpDataBatch } = await import('@/db/queries');
+      saveSerpDataBatch(learningData).catch(err => console.warn("Background batch save failed:", err));
+    }
 
     // Compute z-scores and classify tiers
     const withZScores = computeZScores(enriched)

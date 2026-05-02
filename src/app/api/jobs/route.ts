@@ -18,6 +18,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Failed to create job in database" }, { status: 500 });
     }
 
+    // Trigger processing in the background (self-trigger)
+    const CRON_SECRET = process.env.CRON_SECRET || "seomaster-cron-secret";
+    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
+    
+    // We use a non-awaited fetch to trigger the processing immediately
+    // In Vercel, you might use edge runtime or waitUntil, but this works for simple nodejs runtime too
+    fetch(`${baseUrl}/api/cron/process-jobs`, {
+      method: "GET",
+      headers: { "Authorization": `Bearer ${CRON_SECRET}` },
+    }).catch(err => console.error("Self-trigger failed:", err));
+
     return NextResponse.json({ jobId: job.id, status: "pending" }, { status: 202 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";

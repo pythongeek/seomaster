@@ -3,7 +3,7 @@
 import { useState, useRef, useCallback } from "react";
 import { Badge, Button, Section, Input, TextArea, StatCard, LoadingSpinner, ErrorBanner, DataTable, Modal, ProgressBar } from "@/components/ui";
 import { CtrBarchart, PositionScatter, IntentPie } from "@/components/charts";
-import { parseGSCcsv } from "@/lib/api";
+import { parseGSCcsv, splitCSVLine } from "@/lib/api";
 import { useStore } from "@/store";
 import { useJobPolling } from "@/hooks/useJobPolling";
 import type { GSCRow, GSCResult } from "@/types";
@@ -98,11 +98,11 @@ export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
     const lines = csvText.trim().split("\n");
     const headerIdx = lines.findIndex(l => /clicks/i.test(l) && /impressions/i.test(l));
     if (headerIdx < 0) { setError("Could not find header row"); return; }
-    const headers = lines[headerIdx].split(",").map(h => h.replace(/"/g, "").trim().toLowerCase());
+    const headers = splitCSVLine(lines[headerIdx]).map(h => h.replace(/"/g, "").trim().toLowerCase());
     const targetToSource: Record<string, string> = {};
     Object.entries(columnMapping).forEach(([target, source]) => { const idx = headers.indexOf(source.toLowerCase()); if (idx >= 0) targetToSource[target] = headers[idx]; });
     const mapped: GSCRow[] = lines.slice(headerIdx + 1).map(line => {
-      const cols = line.split(",").map(c => c.replace(/"/g, "").trim());
+      const cols = splitCSVLine(line);
       const get = (t: string) => cols[headers.indexOf(targetToSource[t])] || "";
       return { query: get("query") || cols[0] || "", page: get("page") || cols[1] || "", clicks: parseInt(get("clicks")) || 0, impressions: parseInt(get("impressions")) || 0, ctr: parseFloat(String(get("ctr") || "0").replace("%", "")) || 0, position: parseFloat(get("position")) || 0 };
     }).filter(r => r.query || r.page);

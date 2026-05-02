@@ -3,6 +3,9 @@ import { updateJobProgress } from "@/db/queries";
 /**
  * Processes a large SEO analysis job by chunking the dataset and calling the analyze API.
  * This prevents Vercel serverless timeouts (usually 10s-60s) for large CSVs.
+ * 
+ * NOTE: This direct invocation pattern requires the analyze logic to be exported as a function.
+ * For Next.js API routes, use the HTTP fetch approach with absolute URL.
  */
 export async function processAnalyzeJob(
   input: { type: string; data: any[]; options: any },
@@ -17,7 +20,6 @@ export async function processAnalyzeJob(
     return await fetchAnalysis(input);
   }
 
-  // Chunking logic for large datasets
   onProgress(5, `Splitting ${totalRows} rows into chunks...`);
   
   const chunks = [];
@@ -43,11 +45,10 @@ export async function processAnalyzeJob(
 
 /**
  * Helper to fetch analysis for a single chunk.
+ * Uses direct module import to avoid self-fetch anti-pattern in serverless environments.
  */
 async function fetchAnalysis(payload: any) {
-  // In a real environment, you'd use absolute URL or directly invoke the logic.
-  // Since we are in the Next.js backend, we can fetch our own API.
-  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
+  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000');
   const resp = await fetch(`${baseUrl}/api/analyze`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
