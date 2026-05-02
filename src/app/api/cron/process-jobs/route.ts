@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getPendingJobs, markJobProcessing, completeJob, failJob, updateJobProgress } from "@/db/queries";
+import { getPendingJobs, markJobProcessing, completeJob, failJob, updateJobProgress, initDB } from "@/db/queries";
 // Assuming processAnalyzeJob exists in your job processor. 
 import { processAnalyzeJob } from "@/lib/job-processor";
 
@@ -9,6 +9,7 @@ const CRON_SECRET = process.env.CRON_SECRET || "seomaster-cron-secret";
 
 export async function GET(req: NextRequest) {
   try {
+    await initDB();
     const authHeader = req.headers.get("Authorization");
     if (authHeader !== `Bearer ${CRON_SECRET}`) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

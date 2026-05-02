@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createJob, getJob, getPendingJobs } from "@/db/queries";
+import { createJob, getJob, getPendingJobs, initDB } from "@/db/queries";
 
 export const runtime = "nodejs";
 
 export async function POST(req: NextRequest) {
   try {
+    await initDB();
     const { type, input } = await req.json();
 
     if (!type || !input) {
@@ -26,6 +27,7 @@ export async function POST(req: NextRequest) {
 
 export async function GET(req: NextRequest) {
   try {
+    await initDB();
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
     const listPending = searchParams.get("pending");
