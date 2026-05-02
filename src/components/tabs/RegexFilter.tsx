@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { Badge, Button, Section, Input, TextArea, StatCard, LoadingSpinner, ErrorBanner } from "@/components/ui";
+import { Badge, Button, Section, Input, TextArea, StatCard, LoadingSpinner, ErrorBanner, ProgressBar } from "@/components/ui";
 import { parseGSCcsv } from "@/lib/api";
 import { useStore } from "@/store";
+import { useJobPolling } from "@/hooks/useJobPolling";
 import type { FilterResult } from "@/types";
 import { useRef } from "react";
 
@@ -14,6 +15,17 @@ export function RegexFilter() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<FilterResult | null>(null);
   const [error, setError] = useState("");
+  const [activeJobId, setActiveJobId] = useState<string | null>(null);
+  
+  const currentJob = useJobPolling(activeJobId, (res) => {
+    setResult(res);
+    setLoading(false);
+    setActiveJobId(null);
+  }, (err) => {
+    setError(err);
+    setLoading(false);
+    setActiveJobId(null);
+  });
   const fileRef = useRef<HTMLInputElement>(null);
 
   const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -30,18 +42,32 @@ export function RegexFilter() {
       if (!csvText.trim()) { setError("Load data first."); return; }
       dataset = parseGSCcsv(csvText);
     }
-    setLoading(true); setError("");
+    setLoading(true); setError(""); setResult(null);
     try {
+      const payload = { dataset, searchType, regexFilter };
+
+      if (dataset.length > 1500) {
+        const resp = await fetch("/api/jobs", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ type: "filter", input: payload }),
+        });
+        const json = await resp.json();
+        if (!resp.ok) throw new Error(json.error || "Failed to start background job");
+        setActiveJobId(json.jobId);
+        return;
+      }
+
       const resp = await fetch("/api/filter", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ dataset, searchType, regexFilter }),
+        body: JSON.stringify(payload),
       });
       const json = await resp.json();
       if (!resp.ok) throw new Error(json.error);
       setResult(json.result);
     } catch (e) { setError((e as Error).message); }
-    finally { setLoading(false); }
+    finally { if (!activeJobId) setLoading(false); }
   };
 
   return (
@@ -69,7 +95,13 @@ export function RegexFilter() {
         </div>
       </Section>
 
-      {loading && <LoadingSpinner />}
+      {currentJob && (
+        <div className="mb-4 mt-4">
+          <ProgressBar progress={currentJob.progress || 0} message={currentJob.progressMessage || "Processing data..."} status={currentJob.status as any} />
+        </div>
+      )}
+
+      {loading && !currentJob && <LoadingSpinner />}
       <ErrorBanner message={error} />
 
       {result && !loading && (
