@@ -7,3 +7,4 @@ export { LoadingSpinner } from "./loading-spinner";
 export { DataTable } from "./data-table";
 export { Modal } from "./modal";
 export { ErrorBanner } from "./error-banner";
+export { ProgressBar } from "./progress-bar";

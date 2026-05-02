@@ -3,11 +3,12 @@
 import { useState } from "react";
 import { Badge, Button, Section, Input, TextArea, StatCard, LoadingSpinner, ErrorBanner } from "@/components/ui";
 import { parseGSCcsv } from "@/lib/api";
+import { useStore } from "@/store";
 import type { FilterResult } from "@/types";
 import { useRef } from "react";
 
 export function RegexFilter() {
-  const [csvText, setCsvText] = useState("");
+  const { csvText, setCsvText, gscRows } = useStore();
   const [searchType, setSearchType] = useState("web");
   const [regexFilter, setRegexFilter] = useState("");
   const [loading, setLoading] = useState(false);
@@ -24,14 +25,17 @@ export function RegexFilter() {
   };
 
   const handleAnalyze = async () => {
-    if (!csvText.trim()) { setError("Load data first."); return; }
+    let dataset = gscRows;
+    if (!dataset.length) {
+      if (!csvText.trim()) { setError("Load data first."); return; }
+      dataset = parseGSCcsv(csvText);
+    }
     setLoading(true); setError("");
     try {
-      const rows = parseGSCcsv(csvText);
       const resp = await fetch("/api/filter", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ dataset: rows, searchType, regexFilter }),
+        body: JSON.stringify({ dataset, searchType, regexFilter }),
       });
       const json = await resp.json();
       if (!resp.ok) throw new Error(json.error);
@@ -46,11 +50,12 @@ export function RegexFilter() {
         <div className="grid gap-3">
           <div className="flex gap-2.5 flex-wrap">
             <input type="file" accept=".csv,.tsv,.txt" onChange={handleFile} ref={fileRef} className="hidden" />
-            <Button variant="outline" onClick={() => fileRef.current?.click()}>📁 Select CSV</Button>
-            <Button onClick={handleAnalyze} loading={loading} disabled={!csvText}>🔍 Run Filter</Button>
+            {!gscRows.length && <Button variant="outline" onClick={() => fileRef.current?.click()}>📁 Select CSV</Button>}
+            <Button onClick={handleAnalyze} loading={loading} disabled={!gscRows.length && !csvText}>🔍 Run Filter</Button>
           </div>
-          <TextArea value={csvText} onChange={setCsvText} placeholder="Paste GSC CSV data here…" rows={4} />
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {!gscRows.length && <TextArea value={csvText} onChange={setCsvText} placeholder="Paste GSC CSV data here…" rows={4} />}
+          {gscRows.length > 0 && <div className="text-green text-xs font-bold mt-2">✓ Using {gscRows.length.toLocaleString()} rows from GSC tab.</div>}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">
             <div>
               <div className="text-muted text-[11px] mb-1">Search Surface</div>
               <select value={searchType} onChange={e => setSearchType(e.target.value)}

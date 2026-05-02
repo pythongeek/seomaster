@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { initDB, saveReport, saveGSCSnapshot } from '@/lib/db';
+import { initDB, saveReport, saveGSCSnapshot } from '@/db/queries';
 
 export const runtime = 'nodejs';
 

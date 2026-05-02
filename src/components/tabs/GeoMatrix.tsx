@@ -3,10 +3,11 @@
 import { useState, useRef } from "react";
 import { Badge, Button, Section, TextArea, StatCard, LoadingSpinner, ErrorBanner } from "@/components/ui";
 import { parseGSCcsv } from "@/lib/api";
+import { useStore } from "@/store";
 import type { GEOResult } from "@/types";
 
 export function GeoMatrix() {
-  const [csvText, setCsvText] = useState("");
+  const { csvText, setCsvText, gscRows } = useStore();
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<GEOResult | null>(null);
   const [error, setError] = useState("");
@@ -20,10 +21,13 @@ export function GeoMatrix() {
   };
 
   const handleAnalyze = async () => {
-    if (!csvText.trim()) { setError("Load GSC data first."); return; }
+    let rows = gscRows;
+    if (!rows.length) {
+      if (!csvText.trim()) { setError("Load GSC data first."); return; }
+      rows = parseGSCcsv(csvText);
+    }
     setLoading(true); setError("");
     try {
-      const rows = parseGSCcsv(csvText);
       const resp = await fetch("/api/geo", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ globalDataset: rows }) });
       const json = await resp.json();
       if (!resp.ok) throw new Error(json.error);
@@ -38,10 +42,11 @@ export function GeoMatrix() {
         <div className="grid gap-3">
           <div className="flex gap-2.5">
             <input type="file" accept=".csv,.tsv,.txt" onChange={handleFile} ref={fileRef} className="hidden" />
-            <Button variant="outline" onClick={() => fileRef.current?.click()}>📁 Load Full GSC CSV</Button>
-            <Button onClick={handleAnalyze} loading={loading} disabled={!csvText}>📐 Generate GEO Matrix</Button>
+            {!gscRows.length && <Button variant="outline" onClick={() => fileRef.current?.click()}>📁 Load Full GSC CSV</Button>}
+            <Button onClick={handleAnalyze} loading={loading} disabled={!gscRows.length && !csvText}>📐 Generate GEO Matrix</Button>
           </div>
-          <TextArea value={csvText} onChange={setCsvText} placeholder="Paste your full GSC CSV (top 500 rows) here…" rows={4} />
+          {!gscRows.length && <TextArea value={csvText} onChange={setCsvText} placeholder="Paste your full GSC CSV (top 500 rows) here…" rows={4} />}
+          {gscRows.length > 0 && <div className="text-green text-xs font-bold mt-2">✓ Using {gscRows.length.toLocaleString()} rows from GSC tab.</div>}
         </div>
       </Section>
 

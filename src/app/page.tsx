@@ -14,6 +14,8 @@ import {
   SitemapValidator,
 } from "@/components/tabs";
 
+import { useStore } from "@/store";
+
 // ─── Tab Configuration ──────────────────────────────────────────────────────
 const TABS = [
   { key: "gsc", label: "GSC", icon: "📊" },
@@ -29,7 +31,7 @@ const TABS = [
 ];
 
 export default function SEOMaster() {
-  const [activeTab, setActiveTab] = useState("gsc");
+  const { activeTab, setActiveTab } = useStore();
 
   const renderTab = () => {
     switch (activeTab) {

@@ -1,9 +1,11 @@
 "use client";
 
 import { useState, useRef, useCallback } from "react";
-import { Badge, Button, Section, Input, TextArea, StatCard, LoadingSpinner, ErrorBanner, DataTable, Modal } from "@/components/ui";
+import { Badge, Button, Section, Input, TextArea, StatCard, LoadingSpinner, ErrorBanner, DataTable, Modal, ProgressBar } from "@/components/ui";
 import { CtrBarchart, PositionScatter, IntentPie } from "@/components/charts";
 import { parseGSCcsv } from "@/lib/api";
+import { useStore } from "@/store";
+import { useJobPolling } from "@/hooks/useJobPolling";
 import type { GSCRow, GSCResult } from "@/types";
 
 interface GscCommandCenterProps {
@@ -12,14 +14,21 @@ interface GscCommandCenterProps {
 
 export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
   const [mode, setMode] = useState<"upload" | "api">("upload");
-  const [csvText, setCsvText] = useState("");
-  const [siteUrl, setSiteUrl] = useState("");
-  const [startDate, setStartDate] = useState(() => { const d = new Date(); d.setMonth(d.getMonth() - 3); return d.toISOString().split("T")[0]; });
-  const [endDate, setEndDate] = useState(() => new Date().toISOString().split("T")[0]);
-  const [rows, setRows] = useState<GSCRow[]>([]);
+  const { csvText, setCsvText, siteUrl, setSiteUrl, startDate, setStartDate, endDate, setEndDate, gscRows: rows, setGscRows: setRows, gscResult: result, setGscResult: setResult } = useStore();
   const [loading, setLoading] = useState(false);
+  const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [fetchLoading, setFetchLoading] = useState(false);
-  const [result, setResult] = useState<GSCResult | null>(null);
+  
+  const currentJob = useJobPolling(activeJobId, (res) => {
+    setResult(res);
+    setLoading(false);
+    setActiveJobId(null);
+    onAnalysis?.(res, "gsc_full");
+  }, (err) => {
+    setError(err);
+    setLoading(false);
+    setActiveJobId(null);
+  });
   const [error, setError] = useState("");
   const [dragActive, setDragActive] = useState(false);
   const [parsedHeaders, setParsedHeaders] = useState<string[]>([]);
@@ -90,15 +99,28 @@ export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
 
   const handleAnalyze = async () => {
     if (!rows.length) { setError("Load data first."); return; }
-    setLoading(true); setError("");
+    setLoading(true); setError(""); setResult(null);
+    
     try {
-      const resp = await fetch("/api/analyze", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "gsc_full", data: rows, options: { siteUrl, startDate, endDate } }) });
+      const payload = { type: "gsc_full", data: rows, options: { siteUrl, startDate, endDate } };
+      
+      // Auto-switch to background queue for large datasets
+      if (rows.length > 1500) {
+        const resp = await fetch("/api/jobs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "analyze", input: payload }) });
+        const json = await resp.json();
+        if (!resp.ok) throw new Error(json.error || "Failed to start background job");
+        setActiveJobId(json.jobId);
+        return; // UI updates via polling hook
+      }
+
+      // Synchronous processing for smaller datasets
+      const resp = await fetch("/api/analyze", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       const json = await resp.json();
       if (!resp.ok) throw new Error(json.error || "Analysis failed");
       setResult(json.result);
       onAnalysis?.(json.result, "gsc_full");
     } catch (e) { setError((e as Error).message); }
-    finally { setLoading(false); }
+    finally { if (!activeJobId) setLoading(false); }
   };
 
   const handleFetchAPI = async () => {
@@ -198,7 +220,14 @@ export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
       )}
 
       <ErrorBanner message={error} />
-      {loading && <LoadingSpinner />}
+      
+      {currentJob && (
+        <div className="mb-4">
+          <ProgressBar progress={currentJob.progress || 0} message={currentJob.progressMessage || "Processing data..."} status={currentJob.status as any} />
+        </div>
+      )}
+
+      {loading && !currentJob && <LoadingSpinner />}
 
       {/* Results */}
       {result && !loading && (

@@ -1,4 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { callAIValidated } from '@/lib/ai-client';
+import { AISynthesisSchema } from '@/lib/ai-schemas';
+import { getDynamicBenchmark, getGenericBenchmark } from '@/lib/serp-engine';
 
 export const runtime = 'nodejs';
 
@@ -72,31 +75,10 @@ interface AnalysisResult {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// BENCHMARK DATA — stratified by position + device adjustment
+// SERP INTELLIGENCE BENCHMARKS (Replaces static constants)
 // ─────────────────────────────────────────────────────────────────────────────
 
-const CTR_BENCHMARKS: Record<number, number> = {
-  1: 28.5, 2: 15.2, 3: 9.8, 4: 7.0, 5: 5.4,
-  6: 4.2, 7: 3.4, 8: 3.0, 9: 2.6, 10: 2.2,
-  11: 1.5, 12: 1.3, 13: 1.1, 14: 0.9, 15: 0.8,
-  16: 0.7, 17: 0.6, 18: 0.5, 19: 0.4, 20: 0.3,
-};
-
-const MOBILE_CTR_DISCOUNT: Record<number, number> = {
-  1: 0.72, 2: 0.75, 3: 0.78, 4: 0.80, 5: 0.82,
-  6: 0.83, 7: 0.84, 8: 0.85, 9: 0.85, 10: 0.86,
-  11: 0.87, 12: 0.88, 13: 0.88, 14: 0.89, 15: 0.89,
-  16: 0.90, 17: 0.90, 18: 0.91, 19: 0.91, 20: 0.92,
-};
-
-function getBenchmarkCTR(position: number, isMobile = false): number {
-  if (position <= 0) return 0;
-  const pos = Math.min(Math.round(position), 20);
-  const base = CTR_BENCHMARKS[pos] ?? 0.2;
-  if (!isMobile) return base;
-  const discount = MOBILE_CTR_DISCOUNT[pos] ?? 0.90;
-  return Math.max(base * discount, 0.1);
-}
+// Replaced by getDynamicBenchmark from src/lib/serp-engine.ts
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SERP PATTERN DETECTION
@@ -663,8 +645,8 @@ interface PageHealth {
   potentialClicksGain: number;
 }
 
-function scorePageHealth(rows: GSCRow[]): PageHealth[] {
-  const pageMap = new Map<string, GSCRow[]>();
+function scorePageHealth(rows: EnrichedRow[]): PageHealth[] {
+  const pageMap = new Map<string, EnrichedRow[]>();
   for (const row of rows) {
     const existing = pageMap.get(row.page) || [];
     existing.push(row);
@@ -695,7 +677,7 @@ function scorePageHealth(rows: GSCRow[]): PageHealth[] {
       const zeroClickRows = pageRows.filter(r => r.clicks === 0 && r.impressions > 0);
       if (zeroClickRows.length > 3) issues.push(`${zeroClickRows.length} queries with zero clicks — content-intent mismatch`);
 
-      const potentialBenchmarkCTR = pageRows.reduce((s, r) => s + getBenchmarkCTR(r.position) * r.impressions, 0) / Math.max(totalImpressions, 1);
+      const potentialBenchmarkCTR = pageRows.reduce((s, r) => s + (r.benchmarkCTR || 0.2) * r.impressions, 0) / Math.max(totalImpressions, 1);
       potentialClicksGain = Math.round(totalImpressions * (potentialBenchmarkCTR - avgCTR) / 100);
 
       const grade: PageHealth['healthGrade'] =
@@ -730,15 +712,15 @@ function findCompetitiveGaps(rows: EnrichedRow[]): CompetitiveGap[] {
     .map(r => {
       const nextTier = TIER_JUMPS.find(t => t > r.position) || 21;
       const gapToNext = nextTier - r.position;
-      const benchmarkAtNext = getBenchmarkCTR(nextTier);
+      const benchmarkAtNext = getGenericBenchmark(nextTier);
       const clicksAboveTier = Math.round(r.impressions * (benchmarkAtNext - r.ctr) / 100);
       const impressionsAboveTier = r.impressions;
 
       let gapDescription = '';
-      if (nextTier === 3) gapDescription = `1 more position to top 3 (${getBenchmarkCTR(3)}% avg CTR vs ${r.ctr.toFixed(1)}% current)`;
-      else if (nextTier === 5) gapDescription = `Within reach of page 1 top 5 (${getBenchmarkCTR(5)}% avg CTR)`;
-      else if (nextTier === 10) gapDescription = `On the cusp of page 1 (${getBenchmarkCTR(10)}% avg CTR vs ${r.ctr.toFixed(1)}% current)`;
-      else gapDescription = `${gapToNext} positions from top ${nextTier} (${getBenchmarkCTR(nextTier)}% CTR target)`;
+      if (nextTier === 3) gapDescription = `1 more position to top 3 (${getGenericBenchmark(3)}% avg CTR vs ${r.ctr.toFixed(1)}% current)`;
+      else if (nextTier === 5) gapDescription = `Within reach of page 1 top 5 (${getGenericBenchmark(5)}% avg CTR)`;
+      else if (nextTier === 10) gapDescription = `On the cusp of page 1 (${getGenericBenchmark(10)}% avg CTR vs ${r.ctr.toFixed(1)}% current)`;
+      else gapDescription = `${gapToNext} positions from top ${nextTier} (${getGenericBenchmark(nextTier)}% CTR target)`;
 
       const action = nextTier <= 5
         ? `High-value gap: optimize title + meta + schema to push into top ${nextTier}`
@@ -764,38 +746,7 @@ function findCompetitiveGaps(rows: EnrichedRow[]): CompetitiveGap[] {
 // AI FETCH HELPER
 // ─────────────────────────────────────────────────────────────────────────────
 
-async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: number): Promise<Response> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    return await fetch(url, { ...options, signal: controller.signal });
-  } finally {
-    clearTimeout(timeoutId);
-  }
-}
-
-async function callMiniMax(systemPrompt: string, userContent: string): Promise<string> {
-  const BASE_URL = process.env.ANTHROPIC_BASE_URL || process.env.OPENROUTER_BASE_URL || "https://api.minimax.io/anthropic";
-  const API_KEY = process.env.ANTHROPIC_AUTH_TOKEN || process.env.OPENROUTER_API_KEY || "";
-  const MODEL = process.env.ANTHROPIC_MODEL || "MiniMax-M2.7";
-  if (!API_KEY) throw new Error("AI API key not configured");
-
-  const resp = await fetchWithTimeout(`${BASE_URL}/v1/messages`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${API_KEY}`, "anthropic-version": "2023-06-01" },
-    body: JSON.stringify({ model: MODEL, max_tokens: 4096, stream: false, system: systemPrompt, messages: [{ role: "user", content: userContent }] }),
-  }, AI_TIMEOUT_MS);
-
-  const responseText = await resp.text();
-  if (!resp.ok) {
-    let errorMsg = `AI API error ${resp.status}: ${responseText}`;
-    try { const p = JSON.parse(responseText); if (p.error?.error?.message) errorMsg = p.error.error.message; else if (p.error?.message) errorMsg = p.error.message; } catch {}
-    throw new Error(errorMsg);
-  }
-  const data = JSON.parse(responseText);
-  if (data.error) throw new Error(data.error?.error?.message || data.error?.message || JSON.stringify(data.error));
-  return data.content?.map((b: { text?: string }) => b.text || "").join("") || "";
-}
+// (AI helper replaced by ai-client)
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MAIN POST HANDLER
@@ -816,9 +767,10 @@ export async function POST(req: NextRequest) {
     const avgPosition = rows.reduce((s, r) => s + (r.position || 0), 0) / rows.length;
 
     // ─── Enrich every row ─────────────────────────────────────────────────
-    const enriched: EnrichedRow[] = rows.map(r => {
+    const enriched: EnrichedRow[] = await Promise.all(rows.map(async (r) => {
       const intent = classifyIntent(r.query);
-      const benchmarkCTR = getBenchmarkCTR(r.position);
+      const serpIntel = await getDynamicBenchmark(r.query, r.position, intent.intent, r.ctr, options?.siteUrl);
+      const benchmarkCTR = serpIntel.predictedCTR;
       const ctrGap = benchmarkCTR - r.ctr;
       const ctrRatio = benchmarkCTR > 0 ? r.ctr / benchmarkCTR : 0;
       const serpFeatures = detectSERPFeatures(r.query, r.position);
@@ -843,7 +795,7 @@ export async function POST(req: NextRequest) {
         cannibalPages: [],
         trendDirection: 'stable' as const,
       };
-    });
+    }));
 
     // Compute z-scores and classify tiers
     const withZScores = computeZScores(enriched)
@@ -870,7 +822,7 @@ export async function POST(req: NextRequest) {
     const aiOverviewCandidates = findAIOvCandidates(withCannibal);
     const competitiveGaps = findCompetitiveGaps(withCannibal);
     const priorityMatrix = buildPriorityMatrix(withCannibal, cannibalGroups);
-    const pageHealth = scorePageHealth(rows);
+    const pageHealth = scorePageHealth(enriched);
 
     // ─── Intent breakdown ───────────────────────────────────────────────
     const intentCounts: Record<string, number> = { informational: 0, transactional: 0, navigational: 0, commercial: 0, local: 0 };
@@ -889,16 +841,16 @@ export async function POST(req: NextRequest) {
     };
 
     // ─── Overview metrics ───────────────────────────────────────────────
-    const benchmarkClicks = rows.reduce((s, r) => s + r.impressions * (getBenchmarkCTR(r.position) / 100), 0);
+    const benchmarkClicks = withCannibal.reduce((s, r) => s + r.impressions * ((r.benchmarkCTR || 0.2) / 100), 0);
     const potentialClicksGain = Math.round(benchmarkClicks - totalClicks);
 
     const ctrAnalysis: CTRAnalysis = {
       overallCTR: parseFloat(avgCTR.toFixed(2)),
       benchmarkCTR: parseFloat((benchmarkClicks / Math.max(totalImpressions, 1) * 100).toFixed(2)),
       gap: parseFloat((benchmarkClicks / Math.max(totalImpressions, 1) * 100 - avgCTR).toFixed(2)),
-      atBenchmark: rows.filter(r => { const b = getBenchmarkCTR(r.position); return b > 0 && r.ctr / b >= 0.8 && r.ctr / b <= 1.2; }).length,
-      aboveBenchmark: rows.filter(r => { const b = getBenchmarkCTR(r.position); return b > 0 && r.ctr / b > 1.2; }).length,
-      belowBenchmark: rows.filter(r => { const b = getBenchmarkCTR(r.position); return b > 0 && r.ctr / b < 0.8; }).length,
+      atBenchmark: withCannibal.filter(r => r.benchmarkCTR > 0 && r.ctr / r.benchmarkCTR >= 0.8 && r.ctr / r.benchmarkCTR <= 1.2).length,
+      aboveBenchmark: withCannibal.filter(r => r.benchmarkCTR > 0 && r.ctr / r.benchmarkCTR > 1.2).length,
+      belowBenchmark: withCannibal.filter(r => r.benchmarkCTR > 0 && r.ctr / r.benchmarkCTR < 0.8).length,
       criticalGaps: withCannibal.filter(r => r.ctrRatio < 0.5 && r.impressions > 200).length,
       zeroClickQueries: rows.filter(r => r.impressions > 0 && r.clicks === 0).length,
       zeroClickRate: parseFloat(((rows.filter(r => r.impressions > 0 && r.clicks === 0).length / Math.max(totalRows, 1)) * 100).toFixed(1)),
@@ -970,20 +922,9 @@ ${aiOverviewCandidates.slice(0, 5).map(a => `Query: "${a.query}" | Pos: ${a.posi
 ${competitiveGaps.slice(0, 5).map(g => `Query: "${g.query}" | Pos: ${g.position} | Gap: ${g.gapDescription}`).join('\n')}
 
 ## Page Health (Worst 5)
-${pageHealth.slice(-5).map(p => `URL: ${p.url.split('/').pop()} | Grade: ${p.healthGrade} | Score: ${p.healthScore}/100 | Issues: ${p.issues.join(', ')}`).join('\n')}
+${pageHealth.slice(-5).map(p => `URL: ${p.url.split('/').pop()} | Grade: ${p.healthGrade} | Score: ${p.healthScore}/100 | Issues: ${p.issues.join(', ')}`).join('\n')}`;
 
-Provide a strategic response as JSON with:
-{
-  "executiveSummary": "3-4 sentence strategic overview of the site's SEO health and biggest opportunities",
-  "criticalFindings": ["Top 3 most impactful issues ranked by monthly click opportunity"],
-  "winningStrategy": "Detailed recommended approach combining quick wins, content gaps, and cannibalization fixes into a phased action plan",
-  "aiOverviewBlueprint": "Specific content restructuring recommendations to maximize AI Overview eligibility",
-  "investmentPriority": "Ranked list of efforts by ROI potential — for each: action, expected clicks gained, difficulty",
-  "riskFactors": ["2-3 potential pitfalls or things that could go wrong with the strategy"]
-}`;
-
-      const aiText = await callMiniMax("You are an elite SEO strategist. Return ONLY valid JSON matching the requested schema. No markdown, no explanation.", aiPrompt);
-      try { aiSynthesis = JSON.parse(aiText); } catch { aiSynthesis = { raw: aiText }; }
+      aiSynthesis = await callAIValidated("You are an elite SEO strategist.", aiPrompt, AISynthesisSchema);
     } catch (aiErr) {
       console.warn('AI synthesis failed:', aiErr);
     }
