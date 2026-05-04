@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "worker": "npx ts-node scripts/worker.ts",
+    "worker": "tsx --env-file=.env.local scripts/worker.ts",
     "worker:prod": "node dist/scripts/worker.js"
   },
   "dependencies": {
@@ -34,6 +34,7 @@
     "drizzle-kit": "^0.31.10",
     "postcss": "^8.5.13",
     "tailwindcss": "^3.4.19",
+    "tsx": "^4.21.0",
     "typescript": "5.7.2"
   }
 }
