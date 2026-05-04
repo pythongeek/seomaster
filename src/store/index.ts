@@ -22,41 +22,51 @@ export interface AppNotification {
   timestamp: number;
 }
 
-// ─── Store Interface ────────────────────────────────────────────────────────
-interface SEOStore {
-  // GSC Data — persists across tab switches
+// ─── GSC State Slice ────────────────────────────────────────────────────────
+interface GSCState {
   gscRows: GSCRow[];
   gscResult: GSCResult | null;
   siteUrl: string;
   startDate: string;
   endDate: string;
   csvText: string;
+  gscFetchJobId: string | null;
   setGscRows: (rows: GSCRow[]) => void;
   setGscResult: (result: GSCResult | null) => void;
   setSiteUrl: (url: string) => void;
   setStartDate: (date: string) => void;
   setEndDate: (date: string) => void;
   setCsvText: (text: string) => void;
+  setGscFetchJobId: (id: string | null) => void;
   clearGscData: () => void;
+}
 
-  // Active Tab
+// ─── UI State Slice ─────────────────────────────────────────────────────────
+interface UIState {
   activeTab: string;
   setActiveTab: (tab: string) => void;
+}
 
-  // Background Jobs
+// ─── Job State Slice ─────────────────────────────────────────────────────────
+interface JobState {
   activeJobs: Record<string, JobStatus>;
   addJob: (job: JobStatus) => void;
   updateJobProgress: (id: string, progress: number, message?: string) => void;
   completeJob: (id: string, result: unknown) => void;
   failJob: (id: string, error: string) => void;
   removeJob: (id: string) => void;
+}
 
-  // Notifications
+// ─── Notification State Slice ───────────────────────────────────────────────
+interface NotificationState {
   notifications: AppNotification[];
   addNotification: (message: string, type: AppNotification["type"]) => void;
   removeNotification: (id: string) => void;
   clearNotifications: () => void;
 }
+
+// ─── Combined Store Interface ────────────────────────────────────────────────
+type SEOStore = GSCState & UIState & JobState & NotificationState;
 
 // ─── Default dates ──────────────────────────────────────────────────────────
 function defaultStartDate() {
@@ -80,7 +90,15 @@ export const useStore = create<SEOStore>((set) => ({
   setStartDate: (date) => set({ startDate: date }),
   setEndDate: (date) => set({ endDate: date }),
   setCsvText: (text) => set({ csvText: text }),
-  clearGscData: () => set({ gscRows: [], gscResult: null, csvText: "" }),
+  clearGscData: () => set({
+    gscRows: [],
+    gscResult: null,
+    csvText: "",
+    siteUrl: "",
+    startDate: defaultStartDate(),
+    endDate: new Date().toISOString().split("T")[0],
+    gscFetchJobId: null,
+  }),
 
   // Active Tab
   activeTab: "gsc",
@@ -88,37 +106,45 @@ export const useStore = create<SEOStore>((set) => ({
 
   // Background Jobs
   activeJobs: {},
+  gscFetchJobId: null,
+  setGscFetchJobId: (id) => set({ gscFetchJobId: id }),
   addJob: (job) =>
     set((state) => ({
       activeJobs: { ...state.activeJobs, [job.id]: job },
     })),
   updateJobProgress: (id, progress, message) =>
-    set((state) => ({
-      activeJobs: {
-        ...state.activeJobs,
-        [id]: state.activeJobs[id]
-          ? { ...state.activeJobs[id], progress, progressMessage: message }
-          : state.activeJobs[id],
-      },
-    })),
+    set((state) => {
+      const job = state.activeJobs[id];
+      if (!job) return state;
+      return {
+        activeJobs: {
+          ...state.activeJobs,
+          [id]: { ...job, progress, progressMessage: message },
+        },
+      };
+    }),
   completeJob: (id, result) =>
-    set((state) => ({
-      activeJobs: {
-        ...state.activeJobs,
-        [id]: state.activeJobs[id]
-          ? { ...state.activeJobs[id], status: "completed", progress: 100, result }
-          : state.activeJobs[id],
-      },
-    })),
+    set((state) => {
+      const job = state.activeJobs[id];
+      if (!job) return state;
+      return {
+        activeJobs: {
+          ...state.activeJobs,
+          [id]: { ...job, status: "completed", progress: 100, result },
+        },
+      };
+    }),
   failJob: (id, error) =>
-    set((state) => ({
-      activeJobs: {
-        ...state.activeJobs,
-        [id]: state.activeJobs[id]
-          ? { ...state.activeJobs[id], status: "failed", error }
-          : state.activeJobs[id],
-      },
-    })),
+    set((state) => {
+      const job = state.activeJobs[id];
+      if (!job) return state;
+      return {
+        activeJobs: {
+          ...state.activeJobs,
+          [id]: { ...job, status: "failed", error },
+        },
+      };
+    }),
   removeJob: (id) =>
     set((state) => {
       const { [id]: _, ...rest } = state.activeJobs;

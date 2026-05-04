@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { Badge, Button, Section, Input, TextArea, StatCard, LoadingSpinner, ErrorBanner, DataTable, Modal, ProgressBar } from "@/components/ui";
 import { CtrBarchart, PositionScatter, IntentPie } from "@/components/charts";
 import { parseGSCcsv, splitCSVLine } from "@/lib/api";
@@ -13,11 +13,45 @@ interface GscCommandCenterProps {
 }
 
 export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
+  // Store selectors - single subscription per slice
+  const csvText = useStore((s) => s.csvText);
+  const setCsvText = useStore((s) => s.setCsvText);
+  const siteUrl = useStore((s) => s.siteUrl);
+  const setSiteUrl = useStore((s) => s.setSiteUrl);
+  const startDate = useStore((s) => s.startDate);
+  const setStartDate = useStore((s) => s.setStartDate);
+  const endDate = useStore((s) => s.endDate);
+  const setEndDate = useStore((s) => s.setEndDate);
+  const gscRows = useStore((s) => s.gscRows);
+  const setGscRows = useStore((s) => s.setGscRows);
+  const gscResult = useStore((s) => s.gscResult);
+  const setGscResult = useStore((s) => s.setGscResult);
+  const gscFetchJobId = useStore((s) => s.gscFetchJobId);
+  const setGscFetchJobId = useStore((s) => s.setGscFetchJobId);
+  const activeJobs = useStore((s) => s.activeJobs);
+  const addJob = useStore((s) => s.addJob);
+  const completeJob = useStore((s) => s.completeJob);
+  const failJob = useStore((s) => s.failJob);
+
+  const rows = gscRows;
+  const setRows = setGscRows;
+  const result = gscResult;
+  const setResult = setGscResult;
+
   const [mode, setMode] = useState<"upload" | "api">("upload");
-  const { csvText, setCsvText, siteUrl, setSiteUrl, startDate, setStartDate, endDate, setEndDate, gscRows: rows, setGscRows: setRows, gscResult: result, setGscResult: setResult } = useStore();
   const [loading, setLoading] = useState(false);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
-  const [fetchLoading, setFetchLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [dragActive, setDragActive] = useState(false);
+  const [parsedHeaders, setParsedHeaders] = useState<string[]>([]);
+  const [columnMapping, setColumnMapping] = useState<Record<string, string>>({});
+  const [showColumnMapper, setShowColumnMapper] = useState(false);
+  const [apiError, setApiError] = useState("");
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  // Derived state from store
+  const gscFetchJob = gscFetchJobId ? activeJobs[gscFetchJobId] : null;
+  const fetchLoading = gscFetchJob?.status === "processing";
   
   const currentJob = useJobPolling(activeJobId, (res) => {
     setResult(res);
@@ -29,13 +63,6 @@ export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
     setLoading(false);
     setActiveJobId(null);
   });
-  const [error, setError] = useState("");
-  const [dragActive, setDragActive] = useState(false);
-  const [parsedHeaders, setParsedHeaders] = useState<string[]>([]);
-  const [columnMapping, setColumnMapping] = useState<Record<string, string>>({});
-  const [showColumnMapper, setShowColumnMapper] = useState(false);
-  const [apiError, setApiError] = useState("");
-  const fileRef = useRef<HTMLInputElement>(null);
 
   const datePresets = [
     { label: "7d", days: 7 }, { label: "28d", days: 28 }, { label: "3m", days: 90 },
@@ -138,17 +165,39 @@ export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
 
   const handleFetchAPI = async () => {
     if (!siteUrl) { setApiError("Site URL is required"); return; }
-    setFetchLoading(true); setApiError("");
+    setApiError("");
+
     try {
       const resp = await fetch("/api/gsc", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ siteUrl, startDate, endDate, dimensions: ["query", "page"], rowLimit: 5000 }) });
       const json = await resp.json();
       if (!resp.ok) throw new Error(json.error || "Failed to fetch");
+
+      // Check if this is a background job response
+      if (json.jobId) {
+        setGscFetchJobId(json.jobId);
+        addJob({ id: json.jobId, type: "gsc_fetch", status: "processing", progress: 0 });
+        return;
+      }
+
+      // Synchronous response
       const fetchedRows = json.rows || [];
       setRows(fetchedRows);
       if (fetchedRows.length) { detectAndAutoMapColumns(fetchedRows); setError(""); }
     } catch (e) { setApiError((e as Error).message); }
-    finally { setFetchLoading(false); }
   };
+
+  // Handle gscFetchJob completion via useEffect
+  useEffect(() => {
+    if (gscFetchJob?.status === "completed" && gscFetchJob.result) {
+      const fetchedRows = (gscFetchJob.result as { rows?: GSCRow[] }).rows || [];
+      setRows(fetchedRows);
+      if (fetchedRows.length) { detectAndAutoMapColumns(fetchedRows); setError(""); }
+      setGscFetchJobId(null);
+    } else if (gscFetchJob?.status === "failed") {
+      setApiError(gscFetchJob.error || "Fetch failed");
+      setGscFetchJobId(null);
+    }
+  }, [gscFetchJob]);
 
   const ov = result?.overview;
   const ctr = result?.ctrAnalysis;

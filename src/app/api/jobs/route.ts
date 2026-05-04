@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createJob, getJob, getPendingJobs, initDB } from "@/db/queries";
+import { addAnalysisJob, analysisQueue, getJobStatus } from "@/lib/job-queue";
 
 export const runtime = "nodejs";
 
@@ -12,22 +13,29 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing job type or input" }, { status: 400 });
     }
 
+    // Create job record in database first
     const job = await createJob(type, input);
 
     if (!job) {
       return NextResponse.json({ error: "Failed to create job in database" }, { status: 500 });
     }
 
-    // Trigger processing in the background (self-trigger)
-    const CRON_SECRET = process.env.CRON_SECRET || "seomaster-cron-secret";
-    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
-    
-    // We use a non-awaited fetch to trigger the processing immediately
-    // In Vercel, you might use edge runtime or waitUntil, but this works for simple nodejs runtime too
-    fetch(`${baseUrl}/api/cron/process-jobs`, {
-      method: "GET",
-      headers: { "Authorization": `Bearer ${CRON_SECRET}` },
-    }).catch(err => console.error("Self-trigger failed:", err));
+    // Add job to BullMQ queue for background processing
+    try {
+      const queueJob = await addAnalysisJob({
+        jobId: job.id,
+        type,
+        data: input.data || input,
+        options: input.options || {},
+      });
+
+      if (!queueJob) {
+        console.warn("[jobs] Failed to add job to queue, will be picked up by cron fallback");
+      }
+    } catch (queueError) {
+      // Queue might not be available, log but don't fail
+      console.warn("[jobs] Queue error (will fallback to cron):", queueError);
+    }
 
     return NextResponse.json({ jobId: job.id, status: "pending" }, { status: 202 });
   } catch (error) {
