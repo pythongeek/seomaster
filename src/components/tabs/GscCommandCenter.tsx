@@ -160,7 +160,7 @@ export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
       setResult(json.result);
       onAnalysis?.(json.result, "gsc_full");
     } catch (e) { setError((e as Error).message); }
-    finally { if (!activeJobId) setLoading(false); }
+    finally { setLoading(false); }
   };
 
   const handleFetchAPI = async () => {
