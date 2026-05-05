@@ -118,6 +118,23 @@ export async function POST(req: NextRequest) {
 
     const { jobId, action } = await req.json();
 
+    // Default: process next waiting job if no action specified
+    if (!action) {
+      const waiting = await analysisQueue.getWaiting();
+      if (waiting.length === 0) {
+        return NextResponse.json({ message: "No jobs in queue", processed: 0 });
+      }
+      const job = waiting[0];
+      if (!job.id) {
+        return NextResponse.json({ error: "Job has no ID" }, { status: 400 });
+      }
+      return NextResponse.json({
+        message: `Job ${job.id} queued for processing`,
+        jobId: job.id,
+        queueStats: await getQueueStats(),
+      });
+    }
+
     if (action === "retry" && jobId) {
       // Retry a specific failed job
       const job = await analysisQueue.getJob(jobId);
