@@ -51,10 +51,11 @@ export interface GSCResult {
     clicks: number;
     impressions: number;
     estimatedTrafficGain: number;
-    effort: 'low' | 'medium' | 'high';
+    effort: "low" | "medium" | "high";
     action: string;
     currentCTR: number;
     benchmarkCTR: number;
+    intent: string;
   }>;
   contentGaps: Array<{
     query: string;

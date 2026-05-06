@@ -7,6 +7,9 @@ import { parseGSCcsv, splitCSVLine } from "@/lib/api";
 import { useStore } from "@/store";
 import { useJobPolling } from "@/hooks/useJobPolling";
 import type { GSCRow, GSCResult } from "@/types";
+import { QuickWinDetailModal } from "@/components/modals/QuickWinDetailModal";
+import { AiOverviewDetailModal } from "@/components/modals/AiOverviewDetailModal";
+import { PriorityMatrixDetailModal } from "@/components/modals/PriorityMatrixDetailModal";
 
 interface GscCommandCenterProps {
   onAnalysis?: (data: unknown, type: string) => void;
@@ -48,6 +51,11 @@ export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
   const [showColumnMapper, setShowColumnMapper] = useState(false);
   const [apiError, setApiError] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // Modal state for detail views
+  const [selectedQuickWin, setSelectedQuickWin] = useState<GSCResult["quickWins"][number] | null>(null);
+  const [selectedAiCandidate, setSelectedAiCandidate] = useState<GSCResult["aiOverviewCandidates"][number] | null>(null);
+  const [selectedPriorityItem, setSelectedPriorityItem] = useState<GSCResult["priorityMatrix"][number] | null>(null);
 
   // Derived state from store
   const gscFetchJob = gscFetchJobId ? activeJobs[gscFetchJobId] : null;
@@ -339,14 +347,25 @@ export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
           {/* Quick Wins */}
           {result.quickWins?.length ? (
             <Section title="⚡ Quick Wins — Fastest ROI" accent="green">
+              <div className="mb-3 bg-green/5 border border-green/20 rounded-lg px-3 py-2">
+                <span className="text-green text-xs font-semibold">💡 Tip: Click any item below to see detailed analysis + AI-generated step-by-step fix plan</span>
+              </div>
               <div className="grid gap-2.5">
                 {result.quickWins.slice(0, 10).map((qw, i) => (
-                  <div key={i} className={`bg-card border rounded-lg p-3 ${i < 3 ? "border-green/40" : "border-border"}`}>
+                  <div
+                    key={i}
+                    onClick={() => setSelectedQuickWin(qw)}
+                    className={`bg-card border rounded-lg p-3 cursor-pointer hover:border-green/40 hover:shadow-lg hover:shadow-green/5 transition-all duration-200 ${i < 3 ? "border-green/40" : "border-border"}`}
+                  >
                     <div className="flex justify-between flex-wrap gap-2 mb-1.5">
-                      <span className="text-text font-semibold text-[13px]">{qw.query}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-text font-semibold text-[13px]">{qw.query}</span>
+                        {i < 3 && <span className="text-[10px] bg-green/10 text-green px-1.5 py-0.5 rounded font-bold">TOP</span>}
+                      </div>
                       <div className="flex gap-2">
                         <Badge variant="green">+{qw.estimatedTrafficGain} clicks</Badge>
                         <Badge variant={qw.effort === "low" ? "green" : qw.effort === "medium" ? "amber" : "red"}>{qw.effort} effort</Badge>
+                        <Badge variant="muted">→ Details</Badge>
                       </div>
                     </div>
                     <div className="text-muted text-[11px] mb-1">Position: {qw.position} · Impressions: {qw.impressions.toLocaleString()} · CTR: {qw.currentCTR}% → {qw.benchmarkCTR}%</div>
@@ -421,14 +440,25 @@ export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
           {/* AI Overview Candidates */}
           {result.aiOverviewCandidates?.length ? (
             <Section title="🤖 AI Overview Candidates" accent="purple">
+              <div className="mb-3 bg-purple/5 border border-purple/20 rounded-lg px-3 py-2">
+                <span className="text-purple text-xs font-semibold">💡 Click any candidate to see detailed analysis + AI content optimization plan</span>
+              </div>
               <div className="grid gap-2.5">
                 {result.aiOverviewCandidates.slice(0, 10).map((c, i) => (
-                  <div key={i} className={`bg-card border rounded-lg p-3 ${c.eligibility === "high" ? "border-purple/40" : "border-border"}`}>
+                  <div
+                    key={i}
+                    onClick={() => setSelectedAiCandidate(c)}
+                    className={`bg-card border rounded-lg p-3 cursor-pointer hover:border-purple/40 hover:shadow-lg hover:shadow-purple/5 transition-all duration-200 ${c.eligibility === "high" ? "border-purple/40" : "border-border"}`}
+                  >
                     <div className="flex justify-between mb-1.5 flex-wrap gap-2">
-                      <span className="text-text font-semibold text-[13px]">{c.query}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-text font-semibold text-[13px]">{c.query}</span>
+                        {c.eligibility === "high" && <span className="text-[10px] bg-purple/10 text-purple px-1.5 py-0.5 rounded font-bold">TOP</span>}
+                      </div>
                       <div className="flex gap-2">
                         <Badge variant={c.eligibility === "high" ? "green" : c.eligibility === "medium" ? "amber" : "muted"}>{c.eligibility} eligibility</Badge>
                         <Badge variant="purple">{c.contentFormat}</Badge>
+                        <Badge variant="muted">→ Details</Badge>
                       </div>
                     </div>
                     <div className="text-muted text-[11px]">Position: {c.position} · Impressions: {c.impressions.toLocaleString()} · Score: {c.eligibilityScore}/10</div>
@@ -439,20 +469,91 @@ export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
             </Section>
           ) : null}
 
-          {/* Priority Matrix */}
+          {/* Priority Matrix — Redesigned */}
           {result.priorityMatrix?.length ? (
-            <Section title="📐 Priority Matrix" accent="blue">
-              <DataTable
-                columns={[
-                  { key: "query", label: "Query", render: (v) => <span className="text-text font-semibold">{String(v)}</span> },
-                  { key: "category", label: "Category", render: (v) => <Badge variant={String(v) === "ctr" ? "blue" : String(v) === "content_gap" ? "amber" : String(v) === "cannibalization" ? "red" : "muted"}>{String(v)}</Badge> },
-                  { key: "opportunityScore", label: "Score" },
-                  { key: "impact", label: "Impact", render: (v) => <Badge variant={String(v) === "critical" ? "red" : String(v) === "high" ? "amber" : "muted"}>{String(v)}</Badge> },
-                  { key: "effort", label: "Effort", render: (v) => <Badge variant={String(v) === "low" ? "green" : String(v) === "medium" ? "amber" : "red"}>{String(v)}</Badge> },
-                  { key: "timeToValue", label: "Time" },
-                ]}
-                rows={result.priorityMatrix as unknown as Record<string, unknown>[]} maxRows={15} totalRows={result.priorityMatrix.length}
-              />
+            <Section title="📐 What To Work On First" accent="blue">
+              <div className="mb-3 bg-blue/5 border border-blue/20 rounded-lg px-3 py-2">
+                <span className="text-blue text-xs font-semibold">💡 Click any item to see detailed analysis + AI step-by-step implementation plan</span>
+              </div>
+              {/* Category Legend */}
+              <div className="flex gap-3 flex-wrap mb-4 p-3 bg-surface rounded-lg border border-border">
+                <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-blue"/></div><span className="text-muted text-[11px]">CTR Fix (title/meta)</span>
+                <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-amber"/></div><span className="text-muted text-[11px]">Content Gap</span>
+                <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-red"/></div><span className="text-muted text-[11px]">Cannibalization</span>
+                <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-purple"/></div><span className="text-muted text-[11px]">Position Push</span>
+                <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-cyan"/></div><span className="text-muted text-[11px]">SERP Features</span>
+              </div>
+              {/* Grouped by category with cards */}
+              <div className="grid gap-3">
+                {/* Critical / High Impact items first */}
+                {result.priorityMatrix.filter(p => p.impact === "critical" || p.impact === "high").slice(0, 5).map((item, i) => (
+                  <div
+                    key={i}
+                    onClick={() => setSelectedPriorityItem(item)}
+                    className="bg-card border border-border rounded-xl p-4 cursor-pointer hover:border-blue/40 hover:shadow-lg hover:shadow-blue/5 transition-all duration-200"
+                  >
+                    <div className="flex items-start justify-between gap-3 mb-2">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-text font-bold text-sm">{item.query}</span>
+                          <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                            item.category === "ctr" ? "bg-blue" :
+                            item.category === "content_gap" ? "bg-amber" :
+                            item.category === "cannibalization" ? "bg-red" :
+                            item.category === "position" ? "bg-purple" : "bg-cyan"
+                          }`}/>
+                          <span className="text-muted text-[11px] capitalize">{item.category.replace("_", " ")}</span>
+                          {item.impact === "critical" && <span className="text-[10px] bg-red/10 text-red px-1.5 py-0.5 rounded font-bold">CRITICAL</span>}
+                          {item.impact === "high" && <span className="text-[10px] bg-amber/10 text-amber px-1.5 py-0.5 rounded font-bold">HIGH</span>}
+                        </div>
+                        <div className="text-text text-[12px] mb-1">{item.recommendedAction}</div>
+                      </div>
+                      <div className="text-right flex-shrink-0">
+                        <div className="text-xl font-extrabold text-blue font-mono">{item.opportunityScore}</div>
+                        <div className="text-[10px] text-muted">score</div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-4 text-[11px]">
+                      <span className="text-muted">Effort: <strong className={item.effort === "low" ? "text-green" : item.effort === "medium" ? "text-amber" : "text-red"}>{item.effort}</strong></span>
+                      <span className="text-muted">Time: <strong className="text-text">{item.timeToValue}</strong></span>
+                      <span className="text-muted">Commercial: <strong className="text-text">{item.commercialValue}/100</strong></span>
+                      <Badge variant="muted" className="ml-auto">→ View Plan</Badge>
+                    </div>
+                  </div>
+                ))}
+                {/* Medium/Low items */}
+                {result.priorityMatrix.filter(p => p.impact === "medium" || p.impact === "low").slice(0, 5).length > 0 && (
+                  <div className="mt-2">
+                    <div className="text-muted text-[11px] uppercase tracking-wider mb-2">More Items</div>
+                    <div className="grid gap-2">
+                      {result.priorityMatrix.filter(p => p.impact === "medium" || p.impact === "low").slice(0, 5).map((item, i) => (
+                        <div
+                          key={i}
+                          onClick={() => setSelectedPriorityItem(item)}
+                          className="bg-card border border-border rounded-lg p-3 cursor-pointer hover:border-blue/30 transition-all"
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <span className={`w-1.5 h-1.5 rounded-full ${
+                                item.category === "ctr" ? "bg-blue" :
+                                item.category === "content_gap" ? "bg-amber" :
+                                item.category === "cannibalization" ? "bg-red" :
+                                item.category === "position" ? "bg-purple" : "bg-cyan"
+                              }`}/>
+                              <span className="text-text text-[12px]">{item.query}</span>
+                              <span className="text-muted text-[10px] capitalize">{item.category.replace("_", " ")}</span>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <span className="text-muted text-[11px]">{item.effort} effort · {item.timeToValue}</span>
+                              <Badge variant="muted">→</Badge>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
             </Section>
           ) : null}
 
@@ -486,6 +587,9 @@ export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
           {/* Recommendations */}
           {result.recommendations?.length ? (
             <Section title="🚀 Actionable Recommendations" accent="green">
+              <div className="mb-3 bg-green/5 border border-green/20 rounded-lg px-3 py-2">
+                <span className="text-green text-xs font-semibold">💡 Each recommendation is linked to a Quick Win or Priority item above. Click through for full implementation plans.</span>
+              </div>
               <div className="grid gap-2">
                 {result.recommendations.map((rec, i) => (
                   <div key={i} className="flex gap-2.5 items-start bg-card border border-border rounded-lg px-3.5 py-2.5">
@@ -498,6 +602,23 @@ export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
           ) : null}
         </div>
       )}
+
+      {/* Detail Modals */}
+      <QuickWinDetailModal
+        open={!!selectedQuickWin}
+        onClose={() => setSelectedQuickWin(null)}
+        quickWin={selectedQuickWin}
+      />
+      <AiOverviewDetailModal
+        open={!!selectedAiCandidate}
+        onClose={() => setSelectedAiCandidate(null)}
+        candidate={selectedAiCandidate}
+      />
+      <PriorityMatrixDetailModal
+        open={!!selectedPriorityItem}
+        onClose={() => setSelectedPriorityItem(null)}
+        item={selectedPriorityItem}
+      />
     </div>
   );
 }

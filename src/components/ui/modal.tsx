@@ -19,7 +19,7 @@ export function Modal({ open, onClose, title, maxWidth = "max-w-2xl", children }
       onClick={onClose}
     >
       <div
-        className={`bg-surface border border-border rounded-xl p-6 ${maxWidth} w-full max-h-[80vh] overflow-auto`}
+        className={`bg-surface border border-border rounded-xl p-6 ${maxWidth} w-full max-h-[85vh] overflow-auto`}
         onClick={(e) => e.stopPropagation()}
       >
         {title && (
