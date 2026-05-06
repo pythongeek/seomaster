@@ -1,6 +1,7 @@
 "use client";
 
 import { create } from "zustand";
+import { persist } from "zustand/middleware";
 import type { GSCRow, GSCResult } from "@/types";
 
 // ─── Job Status ─────────────────────────────────────────────────────────────
@@ -76,93 +77,106 @@ function defaultStartDate() {
 }
 
 // ─── Store ──────────────────────────────────────────────────────────────────
-export const useStore = create<SEOStore>((set) => ({
-  // GSC Data
-  gscRows: [],
-  gscResult: null,
-  siteUrl: "",
-  startDate: defaultStartDate(),
-  endDate: new Date().toISOString().split("T")[0],
-  csvText: "",
-  setGscRows: (rows) => set({ gscRows: rows }),
-  setGscResult: (result) => set({ gscResult: result }),
-  setSiteUrl: (url) => set({ siteUrl: url }),
-  setStartDate: (date) => set({ startDate: date }),
-  setEndDate: (date) => set({ endDate: date }),
-  setCsvText: (text) => set({ csvText: text }),
-  clearGscData: () => set({
-    gscRows: [],
-    gscResult: null,
-    csvText: "",
-    siteUrl: "",
-    startDate: defaultStartDate(),
-    endDate: new Date().toISOString().split("T")[0],
-    gscFetchJobId: null,
-  }),
+export const useStore = create<SEOStore>()(
+  persist(
+    (set) => ({
+      // GSC Data
+      gscRows: [],
+      gscResult: null,
+      siteUrl: "",
+      startDate: defaultStartDate(),
+      endDate: new Date().toISOString().split("T")[0],
+      csvText: "",
+      setGscRows: (rows) => set({ gscRows: rows }),
+      setGscResult: (result) => set({ gscResult: result }),
+      setSiteUrl: (url) => set({ siteUrl: url }),
+      setStartDate: (date) => set({ startDate: date }),
+      setEndDate: (date) => set({ endDate: date }),
+      setCsvText: (text) => set({ csvText: text }),
+      clearGscData: () => set({
+        gscRows: [],
+        gscResult: null,
+        csvText: "",
+        siteUrl: "",
+        startDate: defaultStartDate(),
+        endDate: new Date().toISOString().split("T")[0],
+        gscFetchJobId: null,
+      }),
 
-  // Active Tab
-  activeTab: "gsc",
-  setActiveTab: (tab) => set({ activeTab: tab }),
+      // Active Tab
+      activeTab: "gsc",
+      setActiveTab: (tab) => set({ activeTab: tab }),
 
-  // Background Jobs
-  activeJobs: {},
-  gscFetchJobId: null,
-  setGscFetchJobId: (id) => set({ gscFetchJobId: id }),
-  addJob: (job) =>
-    set((state) => ({
-      activeJobs: { ...state.activeJobs, [job.id]: job },
-    })),
-  updateJobProgress: (id, progress, message) =>
-    set((state) => {
-      const job = state.activeJobs[id];
-      if (!job) return state;
-      return {
-        activeJobs: {
-          ...state.activeJobs,
-          [id]: { ...job, progress, progressMessage: message },
-        },
-      };
-    }),
-  completeJob: (id, result) =>
-    set((state) => {
-      const job = state.activeJobs[id];
-      if (!job) return state;
-      return {
-        activeJobs: {
-          ...state.activeJobs,
-          [id]: { ...job, status: "completed", progress: 100, result },
-        },
-      };
-    }),
-  failJob: (id, error) =>
-    set((state) => {
-      const job = state.activeJobs[id];
-      if (!job) return state;
-      return {
-        activeJobs: {
-          ...state.activeJobs,
-          [id]: { ...job, status: "failed", error },
-        },
-      };
-    }),
-  removeJob: (id) =>
-    set((state) => {
-      const { [id]: _, ...rest } = state.activeJobs;
-      return { activeJobs: rest };
-    }),
+      // Background Jobs
+      activeJobs: {},
+      gscFetchJobId: null,
+      setGscFetchJobId: (id) => set({ gscFetchJobId: id }),
+      addJob: (job) =>
+        set((state) => ({
+          activeJobs: { ...state.activeJobs, [job.id]: job },
+        })),
+      updateJobProgress: (id, progress, message) =>
+        set((state) => {
+          const job = state.activeJobs[id];
+          if (!job) return state;
+          return {
+            activeJobs: {
+              ...state.activeJobs,
+              [id]: { ...job, progress, progressMessage: message },
+            },
+          };
+        }),
+      completeJob: (id, result) =>
+        set((state) => {
+          const job = state.activeJobs[id];
+          if (!job) return state;
+          return {
+            activeJobs: {
+              ...state.activeJobs,
+              [id]: { ...job, status: "completed", progress: 100, result },
+            },
+          };
+        }),
+      failJob: (id, error) =>
+        set((state) => {
+          const job = state.activeJobs[id];
+          if (!job) return state;
+          return {
+            activeJobs: {
+              ...state.activeJobs,
+              [id]: { ...job, status: "failed", error },
+            },
+          };
+        }),
+      removeJob: (id) =>
+        set((state) => {
+          const { [id]: _, ...rest } = state.activeJobs;
+          return { activeJobs: rest };
+        }),
 
-  // Notifications
-  notifications: [],
-  addNotification: (message, type) =>
-    set((state) => ({
-      notifications: [
-        ...state.notifications,
-        { id: crypto.randomUUID(), message, type, timestamp: Date.now() },
-      ].slice(-10), // Keep max 10
-    })),
-  removeNotification: (id) =>
-    set((state) => ({
-      notifications: state.notifications.filter((n) => n.id !== id),
-    })),
-  clearNotifications: () => set({ notifications: [] }),
-}));
+      // Notifications
+      notifications: [],
+      addNotification: (message, type) =>
+        set((state) => ({
+          notifications: [
+            ...state.notifications,
+            { id: crypto.randomUUID(), message, type, timestamp: Date.now() },
+          ].slice(-10), // Keep max 10
+        })),
+      removeNotification: (id) =>
+        set((state) => ({
+          notifications: state.notifications.filter((n) => n.id !== id),
+        })),
+      clearNotifications: () => set({ notifications: [] }),
+    }),
+    {
+      name: "seomaster-storage",
+      partialize: (state) => ({
+        gscRows: state.gscRows,
+        gscResult: state.gscResult,
+        siteUrl: state.siteUrl,
+        csvText: state.csvText,
+      }),
+    }
+  )
+);
