@@ -152,8 +152,9 @@ export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
     try {
       const payload = { type: "gsc_full", data: rows, options: { siteUrl, startDate, endDate } };
       
-      // Auto-switch to background queue for large datasets
-      if (rows.length > 1500) {
+      // Auto-switch to background queue for large datasets (10k+ rows)
+      // For smaller datasets, process synchronously to avoid cron/worker dependency
+      if (rows.length > 10000) {
         const resp = await fetch("/api/jobs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "analyze", input: payload }) });
         const json = await resp.json();
         if (!resp.ok) throw new Error(json.error || "Failed to start background job");
