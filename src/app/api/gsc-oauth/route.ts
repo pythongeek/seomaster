@@ -160,8 +160,8 @@ export async function POST(req: NextRequest) {
     if (rawUrl.startsWith("http://")) {
       cleanSiteUrl = rawUrl.replace("http://", "https://");
     } else if (!rawUrl.startsWith("https://") && !rawUrl.startsWith("sc-domain:")) {
-      // Bare domain — assume https
-      cleanSiteUrl = `https://${rawUrl}`;
+      // Bare domain — assume https with www (most GSC verified properties use www)
+      cleanSiteUrl = `https://www.${rawUrl}`;
     }
 
     // Build optional dimension filters (GSC uses AND logic within a group)
