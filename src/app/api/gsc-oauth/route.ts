@@ -153,40 +153,31 @@ export async function POST(req: NextRequest) {
       await updateStoredToken(email, accessToken, expiresAt);
     }
 
-    // Fetch from Google Search Console API
+    // Strip trailing slash to avoid double-slash in API URL
+    const cleanSiteUrl = (siteUrl || "").replace(/\/$/, "");
+
+    // Build optional dimension filters (GSC uses AND logic within a group)
     const gscBody: Record<string, unknown> = {
       startDate: startDate || new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
       endDate: endDate || new Date().toISOString().split("T")[0],
-      dimensions: dimensions || ["query", "page"],
-      rowLimit: rowLimit || 5000,
+      dimensions: dimensions?.length ? dimensions : ["query"],
+      rowLimit: Math.min(rowLimit || 5000, 10000),
     };
 
-    // Optional filters
     if (aggregationType === "byPage") {
       gscBody.aggregationType = "byPage";
     }
-    if (device) {
-      gscBody.dimensionFilterGroups = [{
-        filters: [{ dimension: "device", expression: device }],
-      }];
-    }
-    if (country) {
-      gscBody.dimensionFilterGroups = [{
-        filters: [{ dimension: "country", expression: country }],
-      }];
-    }
 
-    // Build the GSC API URL based on search type
-    const searchTypeToApiPath: Record<string, string> = {
-      web: "/searchAnalytics/query",
-      image: "/searchAnalytics/query",
-      video: "/searchAnalytics/query",
-      news: "/searchAnalytics/query",
-    };
-    const apiPath = searchTypeToApiPath[searchType || "web"] || "/searchAnalytics/query";
+    // Combine device + country filters in a single filter group (AND logic)
+    const filterGroupFilters: { dimension: string; expression: string; operator?: string }[] = [];
+    if (device) filterGroupFilters.push({ dimension: "device", expression: device });
+    if (country) filterGroupFilters.push({ dimension: "country", expression: country });
+    if (filterGroupFilters.length > 0) {
+      gscBody.dimensionFilterGroups = [{ filters: filterGroupFilters }];
+    }
 
     const gscResp = await fetch(
-      `https://searchconsole.googleapis.com/webmasters/v3/sites/${encodeURIComponent(siteUrl)}/${apiPath}`,
+      `https://searchconsole.googleapis.com/webmasters/v3/sites/${encodeURIComponent(cleanSiteUrl)}/searchAnalytics/query`,
       {
         method: "POST",
         headers: {
@@ -201,7 +192,6 @@ export async function POST(req: NextRequest) {
       const errText = await gscResp.text();
       console.error("[GSC OAuth] API error:", gscResp.status, errText);
 
-      // If 401, token might have been revoked
       if (gscResp.status === 401) {
         return NextResponse.json(
           { error: "Google account access expired. Please reconnect." },
