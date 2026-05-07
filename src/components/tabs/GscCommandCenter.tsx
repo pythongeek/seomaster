@@ -395,8 +395,11 @@ export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
                   <Input
                     value={siteUrl}
                     onChange={setSiteUrl}
-                    placeholder="https://yoursite.com or sc-domain:yoursite.com"
+                    placeholder="https://www.yoursite.com or sc-domain:yoursite.com"
                   />
+                  {siteUrl && !siteUrl.startsWith("http") && (
+                    <p className="text-red text-xs mt-1">Must start with https:// or sc-domain:</p>
+                  )}
                 </div>
               )}
 
