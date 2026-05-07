@@ -2,8 +2,8 @@ import { z } from "zod";
 
 const AI_TIMEOUT_MS = 90000;
 
-// MiniMax Token Plan API — requires BOTH Authorization and x-api-key headers
-const BASE_URL = process.env.MINIMAX_BASE_URL || "https://api.minimax.io/anthropic/v1/messages";
+// MiniMax Token Plan API — BASE_URL is the root; path appended per-call
+const BASE_URL = process.env.MINIMAX_BASE_URL || "https://api.minimax.io/anthropic";
 const API_KEY = process.env.MINIMAX_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN || process.env.OPENROUTER_API_KEY || "";
 const MODEL = process.env.MINIMAX_MODEL || process.env.ANTHROPIC_MODEL || "MiniMax-M2.7";
 
