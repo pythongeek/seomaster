@@ -1,9 +1,11 @@
 import { z } from "zod";
 
 const AI_TIMEOUT_MS = 90000;
-const BASE_URL = process.env.ANTHROPIC_BASE_URL || process.env.OPENROUTER_BASE_URL || "https://api.minimax.io/anthropic";
-const API_KEY = process.env.ANTHROPIC_AUTH_TOKEN || process.env.OPENROUTER_API_KEY || "";
-const MODEL = process.env.ANTHROPIC_MODEL || "MiniMax-M2.7";
+
+// MiniMax Token Plan API — requires BOTH Authorization and x-api-key headers
+const BASE_URL = process.env.MINIMAX_BASE_URL || "https://api.minimax.io/anthropic/v1/messages";
+const API_KEY = process.env.MINIMAX_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN || process.env.OPENROUTER_API_KEY || "";
+const MODEL = process.env.MINIMAX_MODEL || process.env.ANTHROPIC_MODEL || "MiniMax-M2.7";
 
 async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: number): Promise<Response> {
   const controller = new AbortController();
@@ -28,6 +30,7 @@ export async function callMiniMaxRaw(systemPrompt: string, userContent: string, 
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${API_KEY}`,
+        "x-api-key": API_KEY, // MiniMax requires BOTH headers
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
