@@ -209,7 +209,7 @@ export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
         setGscConnected(true);
         setGscEmail(data.email || "");
         setLoadingSites(true);
-        const sitesRes = await fetch("/api/gsc-sites");
+        const sitesRes = await fetch(`/api/gsc-sites?email=${encodeURIComponent(data.email || "")}`);
         const sitesData = await sitesRes.json();
         if (sitesData.sites) setGscSites(sitesData.sites);
         setLoadingSites(false);
