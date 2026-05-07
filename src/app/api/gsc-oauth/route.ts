@@ -23,15 +23,26 @@ async function ensureSchema() {
 }
 
 // Token management
-async function getStoredToken(email: string) {
+async function getStoredToken(email?: string) {
   if (!sql) return null;
-  const result = await sql`
-    SELECT access_token, refresh_token, expires_at, token_type
-    FROM gsc_oauth_tokens
-    WHERE user_email = ${email}
-    LIMIT 1
-  `;
-  return result.length > 0 ? result[0] : null;
+  if (email) {
+    const result = await sql`
+      SELECT access_token, refresh_token, expires_at, token_type, user_email
+      FROM gsc_oauth_tokens
+      WHERE user_email = ${email}
+      LIMIT 1
+    `;
+    return result.length > 0 ? result[0] : null;
+  } else {
+    // No email provided — get the most recently updated token
+    const result = await sql`
+      SELECT access_token, refresh_token, expires_at, token_type, user_email
+      FROM gsc_oauth_tokens
+      ORDER BY updated_at DESC
+      LIMIT 1
+    `;
+    return result.length > 0 ? result[0] : null;
+  }
 }
 
 async function refreshAccessToken(refreshToken: string): Promise<{ access_token: string; expires_in: number } | null> {
@@ -69,14 +80,14 @@ async function updateStoredToken(email: string, accessToken: string, expiresAt: 
 // ─── GET: Check connection status ─────────────────────────────────────────────
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
-  const email = searchParams.get("email") || "gsc-user";
+  const requestedEmail = searchParams.get("email");
 
   try {
     if (!sql) {
       return NextResponse.json({ connected: false, error: "Database not configured" });
     }
 
-    const token = await getStoredToken(email);
+    const token = await getStoredToken(requestedEmail || undefined);
 
     if (!token) {
       return NextResponse.json({ connected: false });
@@ -84,6 +95,7 @@ export async function GET(req: NextRequest) {
 
     // Check if expired
     const isExpired = new Date(token.expires_at) <= new Date();
+    const email = token.user_email as string;
 
     return NextResponse.json({
       connected: true,
