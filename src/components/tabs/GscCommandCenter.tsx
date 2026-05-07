@@ -10,13 +10,38 @@ import type { GSCRow, GSCResult } from "@/types";
 import { QuickWinDetailModal } from "@/components/modals/QuickWinDetailModal";
 import { AiOverviewDetailModal } from "@/components/modals/AiOverviewDetailModal";
 import { PriorityMatrixDetailModal } from "@/components/modals/PriorityMatrixDetailModal";
+import type { SearchType, AggregationType, DimensionType } from "@/store";
 
 interface GscCommandCenterProps {
   onAnalysis?: (data: unknown, type: string) => void;
 }
 
+// ─── Dimension options for SEO experts ─────────────────────────────────────
+const DIMENSION_OPTIONS: { value: DimensionType; label: string; description: string }[] = [
+  { value: "query", label: "Query", description: "Search terms users typed" },
+  { value: "page", label: "Page", description: "URLs that received impressions" },
+  { value: "device", label: "Device", description: "Desktop, Mobile, Tablet split" },
+  { value: "country", label: "Country", description: "Geographic performance by country" },
+  { value: "date", label: "Date", description: "Day-by-day trends" },
+];
+
+const COUNTRY_OPTIONS = [
+  { value: "", label: "All Countries" },
+  { value: "USA", label: "United States" },
+  { value: "GBR", label: "United Kingdom" },
+  { value: "CAN", label: "Canada" },
+  { value: "AUS", label: "Australia" },
+  { value: "IND", label: "India" },
+  { value: "BGD", label: "Bangladesh" },
+  { value: "DEU", label: "Germany" },
+  { value: "FRA", label: "France" },
+  { value: "NLD", label: "Netherlands" },
+  { value: "BRA", label: "Brazil" },
+  { value: "SGP", label: "Singapore" },
+  { value: "ARE", label: "UAE" },
+];
+
 export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
-  // Store selectors - single subscription per slice
   const csvText = useStore((s) => s.csvText);
   const setCsvText = useStore((s) => s.setCsvText);
   const siteUrl = useStore((s) => s.siteUrl);
@@ -32,16 +57,25 @@ export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
   const gscFetchJobId = useStore((s) => s.gscFetchJobId);
   const setGscFetchJobId = useStore((s) => s.setGscFetchJobId);
   const activeJobs = useStore((s) => s.activeJobs);
-  const addJob = useStore((s) => s.addJob);
-  const completeJob = useStore((s) => s.completeJob);
-  const failJob = useStore((s) => s.failJob);
+  const searchType = useStore((s) => s.searchType);
+  const setSearchType = useStore((s) => s.setSearchType);
+  const selectedDimensions = useStore((s) => s.selectedDimensions);
+  const setSelectedDimensions = useStore((s) => s.setSelectedDimensions);
+  const deviceFilter = useStore((s) => s.deviceFilter);
+  const setDeviceFilter = useStore((s) => s.setDeviceFilter);
+  const countryFilter = useStore((s) => s.countryFilter);
+  const setCountryFilter = useStore((s) => s.setCountryFilter);
+  const aggregationType = useStore((s) => s.aggregationType);
+  const setAggregationType = useStore((s) => s.setAggregationType);
+  const rowLimit = useStore((s) => s.rowLimit);
+  const setRowLimit = useStore((s) => s.setRowLimit);
 
   const rows = gscRows;
   const setRows = setGscRows;
   const result = gscResult;
   const setResult = setGscResult;
 
-  const [mode, setMode] = useState<"upload" | "api">("upload");
+  const [mode, setMode] = useState<"upload" | "api">("api");
   const [loading, setLoading] = useState(false);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -51,16 +85,16 @@ export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
   const [showColumnMapper, setShowColumnMapper] = useState(false);
   const [apiError, setApiError] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
+  const [showReportConfig, setShowReportConfig] = useState(false);
 
-  // Modal state for detail views
+  // Modal state
   const [selectedQuickWin, setSelectedQuickWin] = useState<GSCResult["quickWins"][number] | null>(null);
   const [selectedAiCandidate, setSelectedAiCandidate] = useState<GSCResult["aiOverviewCandidates"][number] | null>(null);
   const [selectedPriorityItem, setSelectedPriorityItem] = useState<GSCResult["priorityMatrix"][number] | null>(null);
 
-  // Derived state from store
   const gscFetchJob = gscFetchJobId ? activeJobs[gscFetchJobId] : null;
   const fetchLoading = gscFetchJob?.status === "processing";
-  
+
   const currentJob = useJobPolling(activeJobId, (res) => {
     setResult(res);
     setLoading(false);
@@ -112,15 +146,9 @@ export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
 
   const handleDrag = (e: React.DragEvent) => { e.preventDefault(); e.stopPropagation(); setDragActive(e.type === "dragenter" || e.type === "dragover"); };
   const processFiles = async (files: File[]) => {
-    let combinedText = "";
-    let combinedRows: GSCRow[] = [];
-    for (const f of files) {
-      const text = await f.text();
-      combinedText += text + "\n";
-      combinedRows = combinedRows.concat(parseGSCcsv(text));
-    }
-    setCsvText(combinedText);
-    setRows(combinedRows);
+    let combinedText = ""; let combinedRows: GSCRow[] = [];
+    for (const f of files) { const text = await f.text(); combinedText += text + "\n"; combinedRows = combinedRows.concat(parseGSCcsv(text)); }
+    setCsvText(combinedText); setRows(combinedRows);
     if (combinedRows.length) { detectAndAutoMapColumns(combinedRows); setError(""); }
     else { setError("Could not parse CSV. Check format."); setShowColumnMapper(true); }
   };
@@ -148,21 +176,15 @@ export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
   const handleAnalyze = async () => {
     if (!rows.length) { setError("Load data first."); return; }
     setLoading(true); setError(""); setResult(null);
-    
     try {
       const payload = { type: "gsc_full", data: rows, options: { siteUrl, startDate, endDate } };
-      
-      // Auto-switch to background queue for large datasets (10k+ rows)
-      // For smaller datasets, process synchronously to avoid cron/worker dependency
       if (rows.length > 10000) {
         const resp = await fetch("/api/jobs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "analyze", input: payload }) });
         const json = await resp.json();
         if (!resp.ok) throw new Error(json.error || "Failed to start background job");
         setActiveJobId(json.jobId);
-        return; // UI updates via polling hook
+        return;
       }
-
-      // Synchronous processing for smaller datasets
       const resp = await fetch("/api/analyze", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       const json = await resp.json();
       if (!resp.ok) throw new Error(json.error || "Analysis failed");
@@ -172,38 +194,34 @@ export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
     finally { setLoading(false); }
   };
 
-  // Google OAuth state
+  // ─── Google OAuth state ────────────────────────────────────────────────────
   const [gscConnected, setGscConnected] = useState(false);
   const [gscEmail, setGscEmail] = useState("");
   const [gscSites, setGscSites] = useState<{ url: string; permission: string }[]>([]);
   const [connectingGoogle, setConnectingGoogle] = useState(false);
   const [loadingSites, setLoadingSites] = useState(false);
 
-  // Check GSC connection status
   const checkGscConnection = useCallback(async () => {
     try {
       const res = await fetch("/api/gsc-oauth");
       const data = await res.json();
       if (data.connected) {
         setGscConnected(true);
-        setGscEmail(data.email);
-        // Load sites
+        setGscEmail(data.email || "");
         setLoadingSites(true);
         const sitesRes = await fetch("/api/gsc-sites");
         const sitesData = await sitesRes.json();
         if (sitesData.sites) setGscSites(sitesData.sites);
         setLoadingSites(false);
       }
-    } catch {}
+    } catch { setLoadingSites(false); }
   }, []);
 
   useEffect(() => {
     checkGscConnection();
-    // Check URL params for OAuth result
     const params = new URLSearchParams(window.location.search);
     if (params.get("gsc_connected") === "1") {
       checkGscConnection();
-      // Clean URL
       window.history.replaceState({}, "", window.location.pathname);
     }
     if (params.get("gsc_error")) {
@@ -217,25 +235,26 @@ export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
     try {
       const res = await fetch("/api/auth/gsc");
       const data = await res.json();
-      if (data.authUrl) {
-        window.location.href = data.authUrl;
-      } else {
-        setApiError("Failed to initiate Google connection");
-      }
-    } catch (e) {
-      setApiError("Failed to connect Google");
-    } finally {
-      setConnectingGoogle(false);
-    }
+      if (data.authUrl) window.location.href = data.authUrl;
+      else setApiError("Failed to initiate Google connection");
+    } catch (e) { setApiError("Failed to connect Google"); }
+    finally { setConnectingGoogle(false); }
   };
 
   const handleDisconnectGoogle = async () => {
     try {
       await fetch(`/api/auth/gsc/disconnect?email=${encodeURIComponent(gscEmail)}`, { method: "POST" });
-      setGscConnected(false);
-      setGscEmail("");
-      setGscSites([]);
+      setGscConnected(false); setGscEmail(""); setGscSites([]);
     } catch {}
+  };
+
+  const toggleDimension = (dim: DimensionType) => {
+    if (selectedDimensions.includes(dim)) {
+      if (selectedDimensions.length <= 1) return; // must have at least 1
+      setSelectedDimensions(selectedDimensions.filter(d => d !== dim));
+    } else {
+      setSelectedDimensions([...selectedDimensions, dim]);
+    }
   };
 
   const handleFetchGscOAuth = async () => {
@@ -243,10 +262,22 @@ export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
     setApiError("");
     setLoading(true);
     try {
+      const payload = {
+        email: gscEmail,
+        siteUrl,
+        startDate,
+        endDate,
+        searchType,
+        dimensions: selectedDimensions,
+        device: deviceFilter || undefined,
+        country: countryFilter || undefined,
+        aggregationType,
+        rowLimit,
+      };
       const resp = await fetch("/api/gsc-oauth", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: gscEmail, siteUrl, startDate, endDate, dimensions: ["query", "page"], rowLimit: 5000 }),
+        body: JSON.stringify(payload),
       });
       const json = await resp.json();
       if (!resp.ok) throw new Error(json.error || "Failed to fetch");
@@ -257,7 +288,7 @@ export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
     finally { setLoading(false); }
   };
 
-  // Handle gscFetchJob completion via useEffect
+  // Handle background job completion
   useEffect(() => {
     if (gscFetchJob?.status === "completed" && gscFetchJob.result) {
       const fetchedRows = (gscFetchJob.result as { rows?: GSCRow[] }).rows || [];
@@ -320,8 +351,8 @@ export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
               </Button>
             </div>
           ) : (
-            <div className="grid gap-3">
-              {/* Connected account info */}
+            <div className="grid gap-4">
+              {/* Connected account */}
               <div className="flex items-center justify-between bg-green/10 border border-green/25 rounded-lg px-4 py-3">
                 <div className="flex items-center gap-3">
                   <div className="text-2xl">✅</div>
@@ -330,46 +361,210 @@ export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
                     <div className="text-green text-xs">Connected to Google Search Console</div>
                   </div>
                 </div>
-                <Button variant="outline" size="sm" onClick={handleDisconnectGoogle}>
-                  Disconnect
-                </Button>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={handleDisconnectGoogle}>Disconnect</Button>
+                </div>
               </div>
 
               {/* Site selector */}
               {loadingSites ? (
-                <div className="text-muted text-sm">Loading your sites...</div>
+                <div className="text-muted text-sm flex items-center gap-2"><LoadingSpinner size={14} /> Loading your GSC properties…</div>
               ) : gscSites.length > 0 ? (
                 <div>
-                  <label className="text-muted text-xs mb-1 block">📍 Your verified sites</label>
+                  <label className="text-muted text-xs mb-1.5 block">📍 Select GSC Property</label>
                   <select
                     value={siteUrl}
                     onChange={e => setSiteUrl(e.target.value)}
-                    className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-text text-sm">
-                    <option value="">Select a site...</option>
+                    className="w-full bg-surface border border-border rounded-lg px-3 py-2.5 text-text text-sm">
+                    <option value="">— Select a verified property —</option>
                     {gscSites.map(s => (
-                      <option key={s.url} value={s.url}>{s.url}</option>
+                      <option key={s.url} value={s.url}>
+                        {s.url} ({s.permission.replace("siteOwner", "Owner").replace("siteUnverifiedUser", "Unverified").replace("siteVerifiedUser", "Verified")})
+                      </option>
                     ))}
                   </select>
+                  {siteUrl && (
+                    <div className="mt-1.5 text-muted text-[11px]">
+                      Using: <span className="text-text font-mono">{siteUrl}</span>
+                    </div>
+                  )}
                 </div>
-              ) : null}
+              ) : (
+                <div>
+                  <label className="text-muted text-xs mb-1.5 block">🔗 Manual Property URL</label>
+                  <Input
+                    value={siteUrl}
+                    onChange={setSiteUrl}
+                    placeholder="https://yoursite.com or sc-domain:yoursite.com"
+                  />
+                </div>
+              )}
 
-              {/* Manual URL input */}
-              <Input value={siteUrl} onChange={setSiteUrl} placeholder="https://yoursite.com or sc-domain:yoursite.com" />
+              {/* ─── Report Configuration ───────────────────────────────────── */}
+              <div className="border border-border rounded-xl overflow-hidden">
+                {/* Config header — toggle */}
+                <button
+                  onClick={() => setShowReportConfig(!showReportConfig)}
+                  className="w-full flex items-center justify-between px-4 py-3 bg-surface hover:bg-surface/80 transition-colors text-left"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="text-blue text-sm">⚙️</span>
+                    <span className="text-text font-semibold text-sm">Report Configuration</span>
+                    <span className="text-muted text-[11px] hidden sm:inline">— customize what to fetch</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {selectedDimensions.length > 0 && (
+                      <Badge variant="blue">{selectedDimensions.length} dim{selectedDimensions.length > 1 ? "s" : ""}</Badge>
+                    )}
+                    <span className={`text-muted text-sm transition-transform ${showReportConfig ? "rotate-180" : ""}`}>▼</span>
+                  </div>
+                </button>
 
-              {/* Date range */}
-              <div className="flex gap-2 flex-wrap">
-                {datePresets.map(p => (
-                  <button key={p.days} onClick={() => applyDatePreset(p.days)}
-                    className="px-3 py-1.5 rounded-md text-xs font-bold bg-surface text-muted hover:text-text border border-border hover:border-blue/50 transition-all">{p.label}</button>
-                ))}
+                {/* Config body */}
+                {showReportConfig && (
+                  <div className="px-4 pb-4 pt-2 grid gap-4 border-t border-border">
+                    {/* Search Type */}
+                    <div>
+                      <label className="text-muted text-[11px] mb-1.5 block uppercase tracking-wider">🔍 Search Type</label>
+                      <div className="flex gap-2 flex-wrap">
+                        {(["web", "image", "video", "news"] as SearchType[]).map(t => (
+                          <button key={t} onClick={() => setSearchType(t)}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold capitalize transition-all ${searchType === t ? "bg-blue text-white" : "bg-surface text-muted border border-border hover:border-blue/50"}`}>
+                            {t}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Dimensions */}
+                    <div>
+                      <label className="text-muted text-[11px] mb-1.5 block uppercase tracking-wider">📐 Dimensions <span className="normal-case tracking-normal">(select 1–5)</span></label>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                        {DIMENSION_OPTIONS.map(dim => {
+                          const active = selectedDimensions.includes(dim.value);
+                          return (
+                            <button key={dim.value} onClick={() => toggleDimension(dim.value)}
+                              disabled={!active && selectedDimensions.length >= 5}
+                              title={dim.description}
+                              className={`text-left px-3 py-2 rounded-lg text-xs transition-all border ${active ? "bg-blue/10 border-blue/40 text-blue font-semibold" : "bg-surface border-border text-muted hover:border-blue/30 hover:text-text"} ${!active && selectedDimensions.length >= 5 ? "opacity-40 cursor-not-allowed" : "cursor-pointer"}`}>
+                              <div className="font-bold">{dim.label}</div>
+                              <div className="text-[10px] opacity-70 mt-0.5">{dim.description}</div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div className="mt-1.5 text-[10px] text-muted">
+                        Selected: <span className="text-text font-mono">{selectedDimensions.join(", ") || "none"}</span>
+                      </div>
+                    </div>
+
+                    {/* Date Range */}
+                    <div>
+                      <label className="text-muted text-[11px] mb-1.5 block uppercase tracking-wider">📅 Date Range</label>
+                      <div className="flex gap-2 flex-wrap mb-2">
+                        {datePresets.map(p => (
+                          <button key={p.days} onClick={() => applyDatePreset(p.days)}
+                            className="px-3 py-1.5 rounded-md text-xs font-bold bg-surface text-muted hover:text-text border border-border hover:border-blue/50 transition-all">
+                            {p.label}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-muted text-[10px] mb-1 block">From</label>
+                          <Input value={startDate} onChange={setStartDate} type="date" />
+                        </div>
+                        <div>
+                          <label className="text-muted text-[10px] mb-1 block">To</label>
+                          <Input value={endDate} onChange={setEndDate} type="date" />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Filters */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-muted text-[11px] mb-1 block uppercase tracking-wider">🌐 Country</label>
+                        <select
+                          value={countryFilter}
+                          onChange={e => setCountryFilter(e.target.value)}
+                          className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-text text-sm">
+                          {COUNTRY_OPTIONS.map(c => (
+                            <option key={c.value} value={c.value}>{c.label}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-muted text-[11px] mb-1 block uppercase tracking-wider">📱 Device</label>
+                        <select
+                          value={deviceFilter}
+                          onChange={e => setDeviceFilter(e.target.value)}
+                          className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-text text-sm">
+                          <option value="">All Devices</option>
+                          <option value="DESKTOP">Desktop</option>
+                          <option value="MOBILE">Mobile</option>
+                          <option value="TABLET">Tablet</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Aggregation */}
+                    <div>
+                      <label className="text-muted text-[11px] mb-1.5 block uppercase tracking-wider">🔗 Aggregation</label>
+                      <div className="flex gap-2">
+                        {([["byProperty", "By Property (default)"], ["byPage", "By Page"]] as [AggregationType, string][]).map(([val, label]) => (
+                          <button key={val} onClick={() => setAggregationType(val)}
+                            className={`flex-1 px-3 py-2 rounded-lg text-xs font-bold transition-all border ${aggregationType === val ? "bg-blue/10 border-blue/40 text-blue" : "bg-surface border-border text-muted hover:border-blue/30"}`}>
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="mt-1 text-[10px] text-muted">"By Page" returns one row per URL; "By Property" aggregates across the whole site.</div>
+                    </div>
+
+                    {/* Row limit */}
+                    <div>
+                      <label className="text-muted text-[11px] mb-1.5 block uppercase tracking-wider">📊 Row Limit: <span className="text-text font-mono">{rowLimit.toLocaleString()}</span></label>
+                      <input
+                        type="range"
+                        min={100}
+                        max={10000}
+                        step={100}
+                        value={rowLimit}
+                        onChange={e => setRowLimit(parseInt(e.target.value))}
+                        className="w-full accent-blue"
+                      />
+                      <div className="flex justify-between text-[10px] text-muted mt-1">
+                        <span>100</span>
+                        <span>5,000 (recommended)</span>
+                        <span>10,000</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <Input value={startDate} onChange={setStartDate} type="date" />
-                <Input value={endDate} onChange={setEndDate} type="date" />
-              </div>
 
-              <Button onClick={handleFetchGscOAuth} loading={loading}>
-                🔗 Fetch GSC Data
+              {/* Summary of selected config */}
+              {siteUrl && selectedDimensions.length > 0 && (
+                <div className="bg-blue/5 border border-blue/20 rounded-lg px-3 py-2 text-[11px] text-muted flex flex-wrap gap-x-4 gap-y-1">
+                  <span>🔍 <span className="text-text capitalize">{searchType}</span></span>
+                  <span>📐 <span className="text-text">{selectedDimensions.join(", ")}</span></span>
+                  <span>📅 <span className="text-text">{startDate} → {endDate}</span></span>
+                  {countryFilter && <span>🌐 <span className="text-text">{countryFilter}</span></span>}
+                  {deviceFilter && <span>📱 <span className="text-text">{deviceFilter}</span></span>}
+                  <span>📊 <span className="text-text">max {rowLimit.toLocaleString()} rows</span></span>
+                  <span>🔗 <span className="text-text">{aggregationType}</span></span>
+                </div>
+              )}
+
+              {/* Fetch button */}
+              <Button
+                onClick={handleFetchGscOAuth}
+                loading={loading}
+                disabled={!siteUrl}
+                className="w-full py-3 text-base"
+              >
+                {loading ? "Fetching…" : "🔗 Fetch GSC Data"}
               </Button>
             </div>
           )}
@@ -397,13 +592,17 @@ export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
       {/* Data Status */}
       {rows.length > 0 && (
         <div className="bg-green/5 border border-green/20 rounded-lg px-4 py-3 mb-4 flex justify-between items-center animate-fade-in">
-          <span className="text-green text-sm font-bold">✓ {rows.length.toLocaleString()} rows loaded</span>
+          <div className="flex items-center gap-3">
+            <span className="text-green text-sm font-bold">✓ {rows.length.toLocaleString()} rows loaded</span>
+            {siteUrl && <span className="text-muted text-xs">{siteUrl}</span>}
+          </div>
           <Button onClick={handleAnalyze} loading={loading}>🚀 Run Full Analysis</Button>
         </div>
       )}
 
       <ErrorBanner message={error} />
-      
+      <ErrorBanner message={apiError} />
+
       {currentJob && (
         <div className="mb-4">
           <ProgressBar progress={currentJob.progress || 0} message={currentJob.progressMessage || "Processing data..."} status={currentJob.status as any} />
@@ -415,7 +614,6 @@ export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
       {/* Results */}
       {result && !loading && (
         <div className="animate-fade-in">
-          {/* Overview */}
           {ov && (
             <Section title="📊 Overview Dashboard" accent="blue">
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
@@ -431,7 +629,6 @@ export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
             </Section>
           )}
 
-          {/* CTR Analysis */}
           {ctr && (
             <Section title="🎯 CTR Gap Analysis" accent="green">
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
@@ -448,7 +645,6 @@ export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
             </Section>
           )}
 
-          {/* Charts */}
           {result.quickWins?.length ? (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-7">
               <CtrBarchart data={result.quickWins.map(q => ({ query: q.query, impressions: q.impressions, ctr: q.currentCTR }))} />
@@ -457,7 +653,6 @@ export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
             </div>
           ) : null}
 
-          {/* Quick Wins */}
           {result.quickWins?.length ? (
             <Section title="⚡ Quick Wins — Fastest ROI" accent="green">
               <div className="mb-3 bg-green/5 border border-green/20 rounded-lg px-3 py-2">
@@ -465,11 +660,8 @@ export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
               </div>
               <div className="grid gap-2.5">
                 {result.quickWins.slice(0, 10).map((qw, i) => (
-                  <div
-                    key={i}
-                    onClick={() => setSelectedQuickWin(qw)}
-                    className={`bg-card border rounded-lg p-3 cursor-pointer hover:border-green/40 hover:shadow-lg hover:shadow-green/5 transition-all duration-200 ${i < 3 ? "border-green/40" : "border-border"}`}
-                  >
+                  <div key={i} onClick={() => setSelectedQuickWin(qw)}
+                    className={`bg-card border rounded-lg p-3 cursor-pointer hover:border-green/40 hover:shadow-lg hover:shadow-green/5 transition-all duration-200 ${i < 3 ? "border-green/40" : "border-border"}`}>
                     <div className="flex justify-between flex-wrap gap-2 mb-1.5">
                       <div className="flex items-center gap-2">
                         <span className="text-text font-semibold text-[13px]">{qw.query}</span>
@@ -489,7 +681,6 @@ export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
             </Section>
           ) : null}
 
-          {/* Content Gaps */}
           {result.contentGaps?.length ? (
             <Section title="🔍 Content Gaps — Zero-Click Queries" accent="amber">
               <div className="grid gap-2">
@@ -507,14 +698,13 @@ export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
             </Section>
           ) : null}
 
-          {/* Cannibalization */}
           {result.cannibalization?.length ? (
             <Section title="⚠️ Keyword Cannibalization" accent="red">
               <div className="grid gap-3">
                 {result.cannibalization.slice(0, 8).map((c, i) => (
                   <div key={i} className={`bg-card border rounded-xl p-4 ${c.severity === "critical" ? "border-red/40" : "border-border"}`}>
                     <div className="flex justify-between mb-2 flex-wrap gap-2">
-                      <span className="text-text font-bold text-sm">&quot;{c.query}&quot;</span>
+                      <span className="text-text font-bold text-sm">"{c.query}"</span>
                       <Badge variant={c.severity === "critical" ? "red" : c.severity === "high" ? "amber" : "muted"}>{c.severity}</Badge>
                     </div>
                     <DataTable
@@ -533,7 +723,6 @@ export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
             </Section>
           ) : null}
 
-          {/* Page Health */}
           {result.pageHealth?.length ? (
             <Section title="🏥 Page Health Scores" accent="purple">
               <DataTable
@@ -550,7 +739,6 @@ export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
             </Section>
           ) : null}
 
-          {/* AI Overview Candidates */}
           {result.aiOverviewCandidates?.length ? (
             <Section title="🤖 AI Overview Candidates" accent="purple">
               <div className="mb-3 bg-purple/5 border border-purple/20 rounded-lg px-3 py-2">
@@ -558,11 +746,8 @@ export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
               </div>
               <div className="grid gap-2.5">
                 {result.aiOverviewCandidates.slice(0, 10).map((c, i) => (
-                  <div
-                    key={i}
-                    onClick={() => setSelectedAiCandidate(c)}
-                    className={`bg-card border rounded-lg p-3 cursor-pointer hover:border-purple/40 hover:shadow-lg hover:shadow-purple/5 transition-all duration-200 ${c.eligibility === "high" ? "border-purple/40" : "border-border"}`}
-                  >
+                  <div key={i} onClick={() => setSelectedAiCandidate(c)}
+                    className={`bg-card border rounded-lg p-3 cursor-pointer hover:border-purple/40 hover:shadow-lg hover:shadow-purple/5 transition-all ${c.eligibility === "high" ? "border-purple/40" : "border-border"}`}>
                     <div className="flex justify-between mb-1.5 flex-wrap gap-2">
                       <div className="flex items-center gap-2">
                         <span className="text-text font-semibold text-[13px]">{c.query}</span>
@@ -582,39 +767,27 @@ export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
             </Section>
           ) : null}
 
-          {/* Priority Matrix — Redesigned */}
           {result.priorityMatrix?.length ? (
             <Section title="📐 What To Work On First" accent="blue">
               <div className="mb-3 bg-blue/5 border border-blue/20 rounded-lg px-3 py-2">
                 <span className="text-blue text-xs font-semibold">💡 Click any item to see detailed analysis + AI step-by-step implementation plan</span>
               </div>
-              {/* Category Legend */}
               <div className="flex gap-3 flex-wrap mb-4 p-3 bg-surface rounded-lg border border-border">
-                <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-blue"/></div><span className="text-muted text-[11px]">CTR Fix (title/meta)</span>
+                <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-blue"/></div><span className="text-muted text-[11px]">CTR Fix</span>
                 <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-amber"/></div><span className="text-muted text-[11px]">Content Gap</span>
                 <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-red"/></div><span className="text-muted text-[11px]">Cannibalization</span>
                 <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-purple"/></div><span className="text-muted text-[11px]">Position Push</span>
                 <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-cyan"/></div><span className="text-muted text-[11px]">SERP Features</span>
               </div>
-              {/* Grouped by category with cards */}
               <div className="grid gap-3">
-                {/* Critical / High Impact items first */}
                 {result.priorityMatrix.filter(p => p.impact === "critical" || p.impact === "high").slice(0, 5).map((item, i) => (
-                  <div
-                    key={i}
-                    onClick={() => setSelectedPriorityItem(item)}
-                    className="bg-card border border-border rounded-xl p-4 cursor-pointer hover:border-blue/40 hover:shadow-lg hover:shadow-blue/5 transition-all duration-200"
-                  >
+                  <div key={i} onClick={() => setSelectedPriorityItem(item)}
+                    className="bg-card border border-border rounded-xl p-4 cursor-pointer hover:border-blue/40 hover:shadow-lg hover:shadow-blue/5 transition-all">
                     <div className="flex items-start justify-between gap-3 mb-2">
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1">
                           <span className="text-text font-bold text-sm">{item.query}</span>
-                          <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                            item.category === "ctr" ? "bg-blue" :
-                            item.category === "content_gap" ? "bg-amber" :
-                            item.category === "cannibalization" ? "bg-red" :
-                            item.category === "position" ? "bg-purple" : "bg-cyan"
-                          }`}/>
+                          <span className={`w-2 h-2 rounded-full flex-shrink-0 ${item.category === "ctr" ? "bg-blue" : item.category === "content_gap" ? "bg-amber" : item.category === "cannibalization" ? "bg-red" : item.category === "position" ? "bg-purple" : "bg-cyan"}`}/>
                           <span className="text-muted text-[11px] capitalize">{item.category.replace("_", " ")}</span>
                           {item.impact === "critical" && <span className="text-[10px] bg-red/10 text-red px-1.5 py-0.5 rounded font-bold">CRITICAL</span>}
                           {item.impact === "high" && <span className="text-[10px] bg-amber/10 text-amber px-1.5 py-0.5 rounded font-bold">HIGH</span>}
@@ -634,25 +807,16 @@ export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
                     </div>
                   </div>
                 ))}
-                {/* Medium/Low items */}
                 {result.priorityMatrix.filter(p => p.impact === "medium" || p.impact === "low").slice(0, 5).length > 0 && (
                   <div className="mt-2">
                     <div className="text-muted text-[11px] uppercase tracking-wider mb-2">More Items</div>
                     <div className="grid gap-2">
                       {result.priorityMatrix.filter(p => p.impact === "medium" || p.impact === "low").slice(0, 5).map((item, i) => (
-                        <div
-                          key={i}
-                          onClick={() => setSelectedPriorityItem(item)}
-                          className="bg-card border border-border rounded-lg p-3 cursor-pointer hover:border-blue/30 transition-all"
-                        >
+                        <div key={i} onClick={() => setSelectedPriorityItem(item)}
+                          className="bg-card border border-border rounded-lg p-3 cursor-pointer hover:border-blue/30 transition-all">
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
-                              <span className={`w-1.5 h-1.5 rounded-full ${
-                                item.category === "ctr" ? "bg-blue" :
-                                item.category === "content_gap" ? "bg-amber" :
-                                item.category === "cannibalization" ? "bg-red" :
-                                item.category === "position" ? "bg-purple" : "bg-cyan"
-                              }`}/>
+                              <span className={`w-1.5 h-1.5 rounded-full ${item.category === "ctr" ? "bg-blue" : item.category === "content_gap" ? "bg-amber" : item.category === "cannibalization" ? "bg-red" : item.category === "position" ? "bg-purple" : "bg-cyan"}`}/>
                               <span className="text-text text-[12px]">{item.query}</span>
                               <span className="text-muted text-[10px] capitalize">{item.category.replace("_", " ")}</span>
                             </div>
@@ -670,7 +834,6 @@ export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
             </Section>
           ) : null}
 
-          {/* AI Synthesis */}
           {result.aiSynthesis?.executiveSummary && (
             <Section title="🧠 AI Executive Synthesis" accent="purple">
               <div className="bg-card border border-purple/25 rounded-xl p-5">
@@ -697,7 +860,6 @@ export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
             </Section>
           )}
 
-          {/* Recommendations */}
           {result.recommendations?.length ? (
             <Section title="🚀 Actionable Recommendations" accent="green">
               <div className="mb-3 bg-green/5 border border-green/20 rounded-lg px-3 py-2">
@@ -717,21 +879,9 @@ export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
       )}
 
       {/* Detail Modals */}
-      <QuickWinDetailModal
-        open={!!selectedQuickWin}
-        onClose={() => setSelectedQuickWin(null)}
-        quickWin={selectedQuickWin}
-      />
-      <AiOverviewDetailModal
-        open={!!selectedAiCandidate}
-        onClose={() => setSelectedAiCandidate(null)}
-        candidate={selectedAiCandidate}
-      />
-      <PriorityMatrixDetailModal
-        open={!!selectedPriorityItem}
-        onClose={() => setSelectedPriorityItem(null)}
-        item={selectedPriorityItem}
-      />
+      <QuickWinDetailModal open={!!selectedQuickWin} onClose={() => setSelectedQuickWin(null)} quickWin={selectedQuickWin} />
+      <AiOverviewDetailModal open={!!selectedAiCandidate} onClose={() => setSelectedAiCandidate(null)} candidate={selectedAiCandidate} />
+      <PriorityMatrixDetailModal open={!!selectedPriorityItem} onClose={() => setSelectedPriorityItem(null)} item={selectedPriorityItem} />
     </div>
   );
 }

@@ -5,42 +5,77 @@ export const runtime = "nodejs";
 
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 
-async function getStoredToken(email: string) {
-  if (!sql) return null;
-  const result = await sql`
-    SELECT access_token, refresh_token, expires_at
-    FROM gsc_oauth_tokens
-    WHERE user_email = ${email}
-    LIMIT 1
+async function ensureSchema() {
+  if (!sql) return;
+  await sql`
+    CREATE TABLE IF NOT EXISTS gsc_oauth_tokens (
+      id SERIAL PRIMARY KEY,
+      user_email TEXT UNIQUE NOT NULL,
+      access_token TEXT NOT NULL,
+      refresh_token TEXT NOT NULL,
+      token_type TEXT DEFAULT 'Bearer',
+      expires_at TIMESTAMP NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
   `;
-  return result.length > 0 ? result[0] : null;
 }
 
-async function refreshAccessToken(refreshToken: string) {
+async function getStoredToken(email?: string) {
+  if (!sql) return null;
+  if (email) {
+    const result = await sql`
+      SELECT access_token, refresh_token, expires_at, user_email
+      FROM gsc_oauth_tokens
+      WHERE user_email = ${email}
+      LIMIT 1
+    `;
+    return result.length > 0 ? result[0] : null;
+  } else {
+    const result = await sql`
+      SELECT access_token, refresh_token, expires_at, user_email
+      FROM gsc_oauth_tokens
+      ORDER BY updated_at DESC
+      LIMIT 1
+    `;
+    return result.length > 0 ? result[0] : null;
+  }
+}
+
+async function refreshAccessToken(refreshToken: string): Promise<{ access_token: string; expires_in: number } | null> {
   const clientId = process.env.GOOGLE_CLIENT_ID || process.env.Client_ID || "";
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET || process.env.Client_secret || "";
 
-  const res = await fetch(GOOGLE_TOKEN_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      client_id: clientId,
-      client_secret: clientSecret,
-      refresh_token: refreshToken,
-      grant_type: "refresh_token",
-    }),
-  });
-
-  if (!res.ok) return null;
-  return res.json();
+  try {
+    const res = await fetch(GOOGLE_TOKEN_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        client_id: clientId,
+        client_secret: clientSecret,
+        refresh_token: refreshToken,
+        grant_type: "refresh_token",
+      }),
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
 }
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
-  const email = searchParams.get("email") || "gsc-user";
+  const requestedEmail = searchParams.get("email");
 
   try {
-    const token = await getStoredToken(email);
+    if (!sql) {
+      return NextResponse.json({ error: "Database not configured" }, { status: 500 });
+    }
+
+    await ensureSchema();
+
+    const token = await getStoredToken(requestedEmail || undefined);
     if (!token) {
       return NextResponse.json({ error: "Not connected" }, { status: 401 });
     }
@@ -58,9 +93,7 @@ export async function GET(req: NextRequest) {
 
     const gscResp = await fetch(
       "https://searchconsole.googleapis.com/webmasters/v3/sites",
-      {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      }
+      { headers: { Authorization: `Bearer ${accessToken}` } }
     );
 
     if (!gscResp.ok) {

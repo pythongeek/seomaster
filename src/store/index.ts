@@ -24,6 +24,10 @@ export interface AppNotification {
 }
 
 // ─── GSC State Slice ────────────────────────────────────────────────────────
+export type SearchType = "web" | "image" | "video" | "news";
+export type AggregationType = "byProperty" | "byPage";
+export type DimensionType = "query" | "page" | "device" | "country" | "date";
+
 interface GSCState {
   gscRows: GSCRow[];
   gscResult: GSCResult | null;
@@ -32,6 +36,13 @@ interface GSCState {
   endDate: string;
   csvText: string;
   gscFetchJobId: string | null;
+  // OAuth report config
+  searchType: SearchType;
+  selectedDimensions: DimensionType[];
+  deviceFilter: string;
+  countryFilter: string;
+  aggregationType: AggregationType;
+  rowLimit: number;
   setGscRows: (rows: GSCRow[]) => void;
   setGscResult: (result: GSCResult | null) => void;
   setSiteUrl: (url: string) => void;
@@ -39,6 +50,12 @@ interface GSCState {
   setEndDate: (date: string) => void;
   setCsvText: (text: string) => void;
   setGscFetchJobId: (id: string | null) => void;
+  setSearchType: (t: SearchType) => void;
+  setSelectedDimensions: (d: DimensionType[]) => void;
+  setDeviceFilter: (d: string) => void;
+  setCountryFilter: (c: string) => void;
+  setAggregationType: (a: AggregationType) => void;
+  setRowLimit: (n: number) => void;
   clearGscData: () => void;
 }
 
@@ -87,12 +104,25 @@ export const useStore = create<SEOStore>()(
       startDate: defaultStartDate(),
       endDate: new Date().toISOString().split("T")[0],
       csvText: "",
+      // OAuth report config
+      searchType: "web" as SearchType,
+      selectedDimensions: ["query", "page"] as DimensionType[],
+      deviceFilter: "",
+      countryFilter: "",
+      aggregationType: "byProperty" as AggregationType,
+      rowLimit: 5000,
       setGscRows: (rows) => set({ gscRows: rows }),
       setGscResult: (result) => set({ gscResult: result }),
       setSiteUrl: (url) => set({ siteUrl: url }),
       setStartDate: (date) => set({ startDate: date }),
       setEndDate: (date) => set({ endDate: date }),
       setCsvText: (text) => set({ csvText: text }),
+      setSearchType: (t) => set({ searchType: t }),
+      setSelectedDimensions: (d) => set({ selectedDimensions: d }),
+      setDeviceFilter: (d) => set({ deviceFilter: d }),
+      setCountryFilter: (c) => set({ countryFilter: c }),
+      setAggregationType: (a) => set({ aggregationType: a }),
+      setRowLimit: (n) => set({ rowLimit: n }),
       clearGscData: () => set({
         gscRows: [],
         gscResult: null,
@@ -101,6 +131,12 @@ export const useStore = create<SEOStore>()(
         startDate: defaultStartDate(),
         endDate: new Date().toISOString().split("T")[0],
         gscFetchJobId: null,
+        searchType: "web" as SearchType,
+        selectedDimensions: ["query", "page"] as DimensionType[],
+        deviceFilter: "",
+        countryFilter: "",
+        aggregationType: "byProperty" as AggregationType,
+        rowLimit: 5000,
       }),
 
       // Active Tab

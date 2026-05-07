@@ -114,7 +114,7 @@ export async function GET(req: NextRequest) {
 // ─── POST: Fetch GSC data using OAuth tokens ─────────────────────────────────
 export async function POST(req: NextRequest) {
   try {
-    const { email, siteUrl, startDate, endDate, dimensions, rowLimit } = await req.json();
+    const { email, siteUrl, startDate, endDate, dimensions, rowLimit, searchType, device, country, aggregationType } = await req.json();
 
     if (!siteUrl) {
       return NextResponse.json({ error: "siteUrl is required" }, { status: 400 });
@@ -161,8 +161,32 @@ export async function POST(req: NextRequest) {
       rowLimit: rowLimit || 5000,
     };
 
+    // Optional filters
+    if (aggregationType === "byPage") {
+      gscBody.aggregationType = "byPage";
+    }
+    if (device) {
+      gscBody.dimensionFilterGroups = [{
+        filters: [{ dimension: "device", expression: device }],
+      }];
+    }
+    if (country) {
+      gscBody.dimensionFilterGroups = [{
+        filters: [{ dimension: "country", expression: country }],
+      }];
+    }
+
+    // Build the GSC API URL based on search type
+    const searchTypeToApiPath: Record<string, string> = {
+      web: "/searchAnalytics/query",
+      image: "/searchAnalytics/query",
+      video: "/searchAnalytics/query",
+      news: "/searchAnalytics/query",
+    };
+    const apiPath = searchTypeToApiPath[searchType || "web"] || "/searchAnalytics/query";
+
     const gscResp = await fetch(
-      `https://searchconsole.googleapis.com/webmasters/v3/sites/${encodeURIComponent(siteUrl)}/searchAnalytics/query`,
+      `https://searchconsole.googleapis.com/webmasters/v3/sites/${encodeURIComponent(siteUrl)}/${apiPath}`,
       {
         method: "POST",
         headers: {
