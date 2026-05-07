@@ -76,7 +76,7 @@ export async function GET(req: NextRequest) {
     console.log("[GSC Sites] sql available:", !!sql);
     await ensureSchema();
 
-    const token = await getStoredToken(requestedEmail || undefined);
+    const token = await getStoredToken(requestedEmail ?? null);
     console.log("[GSC Sites] token found:", !!token, requestedEmail);
     if (!token) {
       return NextResponse.json({ error: "Not connected" }, { status: 401 });
