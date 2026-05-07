@@ -87,6 +87,9 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ connected: false, error: "Database not configured" });
     }
 
+    // Ensure table exists
+    await ensureSchema();
+
     const token = await getStoredToken(requestedEmail || undefined);
 
     if (!token) {
@@ -117,9 +120,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "siteUrl is required" }, { status: 400 });
     }
 
-    if (!email) {
-      return NextResponse.json({ error: "email required for OAuth" }, { status: 400 });
+    if (!sql) {
+      return NextResponse.json({ error: "Database not configured" }, { status: 500 });
     }
+
+    // Ensure table exists
+    await ensureSchema();
 
     // Get stored token
     const token = await getStoredToken(email);
