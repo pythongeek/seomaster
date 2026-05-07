@@ -172,27 +172,89 @@ export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
     finally { setLoading(false); }
   };
 
-  const handleFetchAPI = async () => {
-    if (!siteUrl) { setApiError("Site URL is required"); return; }
-    setApiError("");
+  // Google OAuth state
+  const [gscConnected, setGscConnected] = useState(false);
+  const [gscEmail, setGscEmail] = useState("");
+  const [gscSites, setGscSites] = useState<{ url: string; permission: string }[]>([]);
+  const [connectingGoogle, setConnectingGoogle] = useState(false);
+  const [loadingSites, setLoadingSites] = useState(false);
 
+  // Check GSC connection status
+  const checkGscConnection = useCallback(async () => {
     try {
-      const resp = await fetch("/api/gsc", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ siteUrl, startDate, endDate, dimensions: ["query", "page"], rowLimit: 5000 }) });
+      const res = await fetch("/api/gsc-oauth");
+      const data = await res.json();
+      if (data.connected) {
+        setGscConnected(true);
+        setGscEmail(data.email);
+        // Load sites
+        setLoadingSites(true);
+        const sitesRes = await fetch("/api/gsc-sites");
+        const sitesData = await sitesRes.json();
+        if (sitesData.sites) setGscSites(sitesData.sites);
+        setLoadingSites(false);
+      }
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    checkGscConnection();
+    // Check URL params for OAuth result
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("gsc_connected") === "1") {
+      checkGscConnection();
+      // Clean URL
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+    if (params.get("gsc_error")) {
+      setApiError(`Google connection failed: ${params.get("gsc_error")}`);
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, [checkGscConnection]);
+
+  const handleConnectGoogle = async () => {
+    setConnectingGoogle(true);
+    try {
+      const res = await fetch("/api/auth/gsc");
+      const data = await res.json();
+      if (data.authUrl) {
+        window.location.href = data.authUrl;
+      } else {
+        setApiError("Failed to initiate Google connection");
+      }
+    } catch (e) {
+      setApiError("Failed to connect Google");
+    } finally {
+      setConnectingGoogle(false);
+    }
+  };
+
+  const handleDisconnectGoogle = async () => {
+    try {
+      await fetch(`/api/auth/gsc/disconnect?email=${encodeURIComponent(gscEmail)}`, { method: "POST" });
+      setGscConnected(false);
+      setGscEmail("");
+      setGscSites([]);
+    } catch {}
+  };
+
+  const handleFetchGscOAuth = async () => {
+    if (!siteUrl) { setApiError("Site URL required"); return; }
+    setApiError("");
+    setLoading(true);
+    try {
+      const resp = await fetch("/api/gsc-oauth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: gscEmail, siteUrl, startDate, endDate, dimensions: ["query", "page"], rowLimit: 5000 }),
+      });
       const json = await resp.json();
       if (!resp.ok) throw new Error(json.error || "Failed to fetch");
-
-      // Check if this is a background job response
-      if (json.jobId) {
-        setGscFetchJobId(json.jobId);
-        addJob({ id: json.jobId, type: "gsc_fetch", status: "processing", progress: 0 });
-        return;
-      }
-
-      // Synchronous response
-      const fetchedRows = json.rows || [];
-      setRows(fetchedRows);
-      if (fetchedRows.length) { detectAndAutoMapColumns(fetchedRows); setError(""); }
+      const rows = json.rows || [];
+      setRows(rows);
+      if (rows.length) { detectAndAutoMapColumns(rows); setError(""); }
     } catch (e) { setApiError((e as Error).message); }
+    finally { setLoading(false); }
   };
 
   // Handle gscFetchJob completion via useEffect
@@ -243,24 +305,74 @@ export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
         </Section>
       )}
 
-      {/* API Mode */}
+      {/* API Mode — Google OAuth */}
       {mode === "api" && (
-        <Section title="🔗 Google Search Console API">
-          <div className="grid gap-3">
-            <Input value={siteUrl} onChange={setSiteUrl} placeholder="https://yoursite.com or sc-domain:yoursite.com" />
-            <div className="flex gap-2 flex-wrap">
-              {datePresets.map(p => (
-                <button key={p.days} onClick={() => applyDatePreset(p.days)}
-                  className="px-3 py-1.5 rounded-md text-xs font-bold bg-surface text-muted hover:text-text border border-border hover:border-blue/50 transition-all">{p.label}</button>
-              ))}
+        <Section title="🔗 Google Search Console">
+          {!gscConnected ? (
+            <div className="text-center py-8">
+              <div className="text-5xl mb-4">🔐</div>
+              <div className="text-text font-bold text-lg mb-2">Connect Your Google Account</div>
+              <div className="text-muted text-sm mb-6 max-w-md mx-auto">
+                Sign in with Google to securely access your Search Console data. No service account needed.
+              </div>
+              <Button onClick={handleConnectGoogle} loading={connectingGoogle} className="px-6 py-3 text-base">
+                🚀 Connect Google
+              </Button>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <Input value={startDate} onChange={setStartDate} type="date" />
-              <Input value={endDate} onChange={setEndDate} type="date" />
+          ) : (
+            <div className="grid gap-3">
+              {/* Connected account info */}
+              <div className="flex items-center justify-between bg-green/10 border border-green/25 rounded-lg px-4 py-3">
+                <div className="flex items-center gap-3">
+                  <div className="text-2xl">✅</div>
+                  <div>
+                    <div className="text-text font-semibold text-sm">{gscEmail}</div>
+                    <div className="text-green text-xs">Connected to Google Search Console</div>
+                  </div>
+                </div>
+                <Button variant="outline" size="sm" onClick={handleDisconnectGoogle}>
+                  Disconnect
+                </Button>
+              </div>
+
+              {/* Site selector */}
+              {loadingSites ? (
+                <div className="text-muted text-sm">Loading your sites...</div>
+              ) : gscSites.length > 0 ? (
+                <div>
+                  <label className="text-muted text-xs mb-1 block">📍 Your verified sites</label>
+                  <select
+                    value={siteUrl}
+                    onChange={e => setSiteUrl(e.target.value)}
+                    className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-text text-sm">
+                    <option value="">Select a site...</option>
+                    {gscSites.map(s => (
+                      <option key={s.url} value={s.url}>{s.url}</option>
+                    ))}
+                  </select>
+                </div>
+              ) : null}
+
+              {/* Manual URL input */}
+              <Input value={siteUrl} onChange={setSiteUrl} placeholder="https://yoursite.com or sc-domain:yoursite.com" />
+
+              {/* Date range */}
+              <div className="flex gap-2 flex-wrap">
+                {datePresets.map(p => (
+                  <button key={p.days} onClick={() => applyDatePreset(p.days)}
+                    className="px-3 py-1.5 rounded-md text-xs font-bold bg-surface text-muted hover:text-text border border-border hover:border-blue/50 transition-all">{p.label}</button>
+                ))}
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <Input value={startDate} onChange={setStartDate} type="date" />
+                <Input value={endDate} onChange={setEndDate} type="date" />
+              </div>
+
+              <Button onClick={handleFetchGscOAuth} loading={loading}>
+                🔗 Fetch GSC Data
+              </Button>
             </div>
-            <Button onClick={handleFetchAPI} loading={fetchLoading}>🔗 Fetch GSC Data</Button>
-            <ErrorBanner message={apiError} />
-          </div>
+          )}
         </Section>
       )}
 
