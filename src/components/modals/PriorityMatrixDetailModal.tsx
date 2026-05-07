@@ -108,7 +108,7 @@ export function PriorityMatrixDetailModal({ open, onClose, item }: PriorityMatri
       <div className={`rounded-xl border p-4 mb-4 bg-${categoryColors[item.category]}/5 border-${categoryColors[item.category]}/25`}>
         <div className="flex items-start justify-between gap-3">
           <div>
-            <div className="text-[11px] uppercase tracking-wider text-muted mb-1">Priority Category</div>
+            <div className="text-[11px] uppercase tracking-wider text-slate-600 mb-1">Priority Category</div>
             <Badge variant={categoryColors[item.category] as "blue" | "amber" | "red" | "purple" | "cyan"}>
               {categoryLabels[item.category]}
             </Badge>
@@ -121,30 +121,30 @@ export function PriorityMatrixDetailModal({ open, onClose, item }: PriorityMatri
 
       <div className="grid grid-cols-4 gap-3 mb-4">
         <div className="bg-card border border-border rounded-xl p-3 text-center">
-          <div className="text-[10px] uppercase tracking-wider text-muted mb-1">Opportunity</div>
+          <div className="text-[10px] uppercase tracking-wider text-slate-600 mb-1">Opportunity</div>
           <div className="text-xl font-extrabold text-blue font-mono">{item.opportunityScore}</div>
-          <div className="text-[10px] text-muted">score</div>
+          <div className="text-[10px] text-slate-600">score</div>
         </div>
         <div className="bg-card border border-border rounded-xl p-3 text-center">
-          <div className="text-[10px] uppercase tracking-wider text-muted mb-1">Commercial</div>
+          <div className="text-[10px] uppercase tracking-wider text-slate-600 mb-1">Commercial</div>
           <div className="text-xl font-extrabold text-green font-mono">{item.commercialValue}</div>
-          <div className="text-[10px] text-muted">value</div>
+          <div className="text-[10px] text-slate-600">value</div>
         </div>
         <div className="bg-card border border-border rounded-xl p-3 text-center">
-          <div className="text-[10px] uppercase tracking-wider text-muted mb-1">Time</div>
+          <div className="text-[10px] uppercase tracking-wider text-slate-600 mb-1">Time</div>
           <div className="text-xl font-extrabold text-amber font-mono">{item.timeToValue}</div>
-          <div className="text-[10px] text-muted">to value</div>
+          <div className="text-[10px] text-slate-600">to value</div>
         </div>
         <div className="bg-card border border-border rounded-xl p-3 text-center">
-          <div className="text-[10px] uppercase tracking-wider text-muted mb-1">Effort</div>
+          <div className="text-[10px] uppercase tracking-wider text-slate-600 mb-1">Effort</div>
           <div className={`text-xl font-extrabold font-mono ${item.effort === "low" ? "text-green" : item.effort === "medium" ? "text-amber" : "text-red"}`}>{item.effort}</div>
-          <div className="text-[10px] text-muted">complexity</div>
+          <div className="text-[10px] text-slate-600">complexity</div>
         </div>
       </div>
 
       <div className="bg-card border border-border rounded-xl p-4 mb-4">
         <div className="flex items-center gap-2 mb-2">
-          <span className="text-[11px] uppercase tracking-wider text-muted">Recommended Action:</span>
+          <span className="text-[11px] uppercase tracking-wider text-slate-600">Recommended Action:</span>
           <Badge variant={impactColors[item.impact] as "red" | "amber" | "blue" | "muted"}>
             {item.impact} impact
           </Badge>
@@ -175,7 +175,7 @@ export function PriorityMatrixDetailModal({ open, onClose, item }: PriorityMatri
 
       <div className="mb-4">
         <div className="flex items-center justify-between mb-3">
-          <div className="text-[11px] uppercase tracking-wider text-muted">🧠 AI Step-by-Step Action Plan</div>
+          <div className="text-[11px] uppercase tracking-wider text-slate-600">🧠 AI Step-by-Step Action Plan</div>
           {!aiPlan && (
             <Button size="sm" variant="outline" onClick={generateAiPlan} loading={loadingAi}>
               {loadingAi ? "Researching..." : "✨ Generate Plan"}
@@ -197,7 +197,7 @@ export function PriorityMatrixDetailModal({ open, onClose, item }: PriorityMatri
                   className={`px-2.5 py-1 rounded-full text-[11px] font-bold transition-all ${
                     activeStep === i
                       ? "bg-blue text-white"
-                      : "bg-surface text-muted border border-border hover:border-blue/50"
+                      : "bg-surface text-slate-600 border border-border hover:border-blue/50"
                   }`}
                 >
                   {step.stepNumber}. {step.title}
@@ -220,7 +220,7 @@ export function PriorityMatrixDetailModal({ open, onClose, item }: PriorityMatri
                         {aiPlan[activeStep].difficulty}
                       </Badge>
                     </div>
-                    <div className="text-muted text-[11px] mb-2">
+                    <div className="text-slate-600 text-[11px] mb-2">
                       ⏱️ {aiPlan[activeStep].estimatedTime} · Expected lift: <strong className="text-green">{aiPlan[activeStep].expectedLift}</strong>
                     </div>
                     <div className="text-text text-[13px] leading-relaxed">{aiPlan[activeStep].description}</div>
@@ -229,7 +229,7 @@ export function PriorityMatrixDetailModal({ open, onClose, item }: PriorityMatri
 
                 {aiPlan[activeStep].checklist && aiPlan[activeStep].checklist.length > 0 && (
                   <div className="bg-surface rounded-lg p-3 mt-2">
-                    <div className="text-[10px] uppercase tracking-wider text-muted mb-1.5">✅ Checklist</div>
+                    <div className="text-[10px] uppercase tracking-wider text-slate-600 mb-1.5">✅ Checklist</div>
                     {aiPlan[activeStep].checklist!.map((checkItem, i) => (
                       <div key={i} className="text-text text-[12px] mb-1 flex items-start gap-2">
                         <input type="checkbox" className="mt-0.5 accent-blue flex-shrink-0" /> {checkItem}
@@ -240,7 +240,7 @@ export function PriorityMatrixDetailModal({ open, onClose, item }: PriorityMatri
 
                 {aiPlan[activeStep].codeExample && (
                   <div className="bg-surface rounded-lg p-3 mt-3">
-                    <div className="text-[10px] uppercase tracking-wider text-muted mb-1.5">💻 Code Example</div>
+                    <div className="text-[10px] uppercase tracking-wider text-slate-600 mb-1.5">💻 Code Example</div>
                     <pre className="text-[11px] text-green font-mono whitespace-pre-wrap overflow-x-auto">
                       {aiPlan[activeStep].codeExample}
                     </pre>
@@ -262,7 +262,7 @@ export function PriorityMatrixDetailModal({ open, onClose, item }: PriorityMatri
               <div className="flex-1 bg-surface rounded-full h-1.5">
                 <div className="bg-blue h-full rounded-full transition-all" style={{ width: `${((activeStep + 1) / aiPlan.length) * 100}%` }} />
               </div>
-              <span className="text-muted text-[10px]">{activeStep + 1}/{aiPlan.length} steps</span>
+              <span className="text-slate-600 text-[10px]">{activeStep + 1}/{aiPlan.length} steps</span>
             </div>
           </div>
         )}
@@ -270,22 +270,22 @@ export function PriorityMatrixDetailModal({ open, onClose, item }: PriorityMatri
         {!aiPlan && !loadingAi && (
           <div className="bg-surface border border-border border-dashed rounded-xl p-6 text-center">
             <div className="text-2xl mb-2">🧠</div>
-            <div className="text-muted text-xs">Click "Generate Plan" to get a detailed, AI-generated step-by-step implementation guide for this priority item.</div>
+            <div className="text-slate-600 text-xs">Click "Generate Plan" to get a detailed, AI-generated step-by-step implementation guide for this priority item.</div>
           </div>
         )}
       </div>
 
       <div className="bg-surface border border-border rounded-xl p-4">
-        <div className="text-[11px] uppercase tracking-wider text-muted mb-2">📋 Raw Data</div>
+        <div className="text-[11px] uppercase tracking-wider text-slate-600 mb-2">📋 Raw Data</div>
         <div className="grid grid-cols-2 gap-2 text-[11px]">
-          <div className="flex justify-between"><span className="text-muted">Query:</span><span className="text-text font-mono truncate max-w-[200px]">{item.query}</span></div>
-          <div className="flex justify-between"><span className="text-muted">Category:</span><span className="text-text">{categoryLabels[item.category]}</span></div>
-          <div className="flex justify-between"><span className="text-muted">Page:</span><span className="text-text font-mono truncate max-w-[200px]">{item.page.replace(/^https?:\/\/[^/]+/, "")}</span></div>
-          <div className="flex justify-between"><span className="text-muted">Opportunity:</span><span className="text-text">{item.opportunityScore}</span></div>
-          <div className="flex justify-between"><span className="text-muted">Commercial:</span><span className="text-text">{item.commercialValue}/100</span></div>
-          <div className="flex justify-between"><span className="text-muted">Impact:</span><span className={`font-bold ${impactColors[item.impact] === "red" ? "text-red" : impactColors[item.impact] === "amber" ? "text-amber" : "text-blue"}`}>{item.impact}</span></div>
-          <div className="flex justify-between"><span className="text-muted">Effort:</span><span className={`font-bold ${item.effort === "low" ? "text-green" : item.effort === "medium" ? "text-amber" : "text-red"}`}>{item.effort}</span></div>
-          <div className="flex justify-between"><span className="text-muted">Time:</span><span className="text-text">{item.timeToValue}</span></div>
+          <div className="flex justify-between"><span className="text-slate-600">Query:</span><span className="text-text font-mono truncate max-w-[200px]">{item.query}</span></div>
+          <div className="flex justify-between"><span className="text-slate-600">Category:</span><span className="text-text">{categoryLabels[item.category]}</span></div>
+          <div className="flex justify-between"><span className="text-slate-600">Page:</span><span className="text-text font-mono truncate max-w-[200px]">{item.page.replace(/^https?:\/\/[^/]+/, "")}</span></div>
+          <div className="flex justify-between"><span className="text-slate-600">Opportunity:</span><span className="text-text">{item.opportunityScore}</span></div>
+          <div className="flex justify-between"><span className="text-slate-600">Commercial:</span><span className="text-text">{item.commercialValue}/100</span></div>
+          <div className="flex justify-between"><span className="text-slate-600">Impact:</span><span className={`font-bold ${impactColors[item.impact] === "red" ? "text-red" : impactColors[item.impact] === "amber" ? "text-amber" : "text-blue"}`}>{item.impact}</span></div>
+          <div className="flex justify-between"><span className="text-slate-600">Effort:</span><span className={`font-bold ${item.effort === "low" ? "text-green" : item.effort === "medium" ? "text-amber" : "text-red"}`}>{item.effort}</span></div>
+          <div className="flex justify-between"><span className="text-slate-600">Time:</span><span className="text-text">{item.timeToValue}</span></div>
         </div>
       </div>
     </Modal>

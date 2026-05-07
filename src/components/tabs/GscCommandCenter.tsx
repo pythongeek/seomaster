@@ -92,6 +92,13 @@ export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
   const [selectedAiCandidate, setSelectedAiCandidate] = useState<GSCResult["aiOverviewCandidates"][number] | null>(null);
   const [selectedPriorityItem, setSelectedPriorityItem] = useState<GSCResult["priorityMatrix"][number] | null>(null);
 
+  // Scroll to top when any modal opens
+  useEffect(() => {
+    if (selectedQuickWin || selectedAiCandidate || selectedPriorityItem) {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  }, [selectedQuickWin, selectedAiCandidate, selectedPriorityItem]);
+
   const gscFetchJob = gscFetchJobId ? activeJobs[gscFetchJobId] : null;
   const fetchLoading = gscFetchJob?.status === "processing";
 
@@ -310,7 +317,7 @@ export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
       <div className="flex gap-2 mb-4">
         {(["upload", "api"] as const).map(m => (
           <button key={m} onClick={() => setMode(m)}
-            className={`px-4 py-2 rounded-lg text-sm font-bold transition-all duration-200 ${mode === m ? "bg-blue text-white shadow-lg shadow-blue/20" : "bg-surface text-muted hover:text-text border border-border"}`}>
+            className={`px-4 py-2 rounded-lg text-sm font-bold transition-all duration-200 ${mode === m ? "bg-blue text-white shadow-lg shadow-blue/20" : "bg-surface text-slate-600 hover:text-text border border-border"}`}>
             {m === "upload" ? "📁 Upload CSV" : "🔗 API Connect"}
           </button>
         ))}
@@ -326,9 +333,9 @@ export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
             <input type="file" accept=".csv,.tsv,.txt" onChange={handleFile} ref={fileRef} className="hidden" multiple />
             <div className="text-3xl mb-2">{dragActive ? "📥" : "📊"}</div>
             <div className="text-text font-semibold mb-1">Drop CSV here or click to upload</div>
-            <div className="text-muted text-xs">Supports GSC CSV exports with query, page, clicks, impressions, CTR, position columns</div>
+            <div className="text-slate-600 text-xs">Supports GSC CSV exports with query, page, clicks, impressions, CTR, position columns</div>
           </div>
-          <div className="mt-3 flex items-center gap-2 text-muted text-xs"><span>or</span><div className="flex-1 h-px bg-border" /></div>
+          <div className="mt-3 flex items-center gap-2 text-slate-600 text-xs"><span>or</span><div className="flex-1 h-px bg-border" /></div>
           <TextArea value={csvText} onChange={setCsvText} placeholder="Paste GSC CSV data here…" rows={4} />
           <div className="flex gap-2 mt-3">
             <Button variant="outline" size="sm" onClick={handleParse} disabled={!csvText}>Parse CSV</Button>
@@ -343,7 +350,7 @@ export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
             <div className="text-center py-8">
               <div className="text-5xl mb-4">🔐</div>
               <div className="text-text font-bold text-lg mb-2">Connect Your Google Account</div>
-              <div className="text-muted text-sm mb-6 max-w-md mx-auto">
+              <div className="text-slate-600 text-sm mb-6 max-w-md mx-auto">
                 Sign in with Google to securely access your Search Console data. No service account needed.
               </div>
               <Button onClick={handleConnectGoogle} loading={connectingGoogle} className="px-6 py-3 text-base">
@@ -368,10 +375,10 @@ export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
 
               {/* Site selector */}
               {loadingSites ? (
-                <div className="text-muted text-sm flex items-center gap-2"><LoadingSpinner /> Loading your GSC properties…</div>
+                <div className="text-slate-600 text-sm flex items-center gap-2"><LoadingSpinner /> Loading your GSC properties…</div>
               ) : gscSites.length > 0 ? (
                 <div>
-                  <label className="text-muted text-xs mb-1.5 block">📍 Select GSC Property</label>
+                  <label className="text-slate-600 text-xs mb-1.5 block">📍 Select GSC Property</label>
                   <select
                     value={siteUrl}
                     onChange={e => setSiteUrl(e.target.value)}
@@ -384,14 +391,14 @@ export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
                     ))}
                   </select>
                   {siteUrl && (
-                    <div className="mt-1.5 text-muted text-[11px]">
+                    <div className="mt-1.5 text-slate-600 text-sm">
                       Using: <span className="text-text font-mono">{siteUrl}</span>
                     </div>
                   )}
                 </div>
               ) : (
                 <div>
-                  <label className="text-muted text-xs mb-1.5 block">🔗 Manual Property URL</label>
+                  <label className="text-slate-600 text-xs mb-1.5 block">🔗 Manual Property URL</label>
                   <Input
                     value={siteUrl}
                     onChange={setSiteUrl}
@@ -413,13 +420,13 @@ export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
                   <div className="flex items-center gap-2">
                     <span className="text-blue text-sm">⚙️</span>
                     <span className="text-text font-semibold text-sm">Report Configuration</span>
-                    <span className="text-muted text-[11px] hidden sm:inline">— customize what to fetch</span>
+                    <span className="text-slate-600 text-sm hidden sm:inline">— customize what to fetch</span>
                   </div>
                   <div className="flex items-center gap-2">
                     {selectedDimensions.length > 0 && (
                       <Badge variant="blue">{selectedDimensions.length} dim{selectedDimensions.length > 1 ? "s" : ""}</Badge>
                     )}
-                    <span className={`text-muted text-sm transition-transform ${showReportConfig ? "rotate-180" : ""}`}>▼</span>
+                    <span className={`text-slate-600 text-sm transition-transform ${showReportConfig ? "rotate-180" : ""}`}>▼</span>
                   </div>
                 </button>
 
@@ -428,11 +435,11 @@ export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
                   <div className="px-4 pb-4 pt-2 grid gap-4 border-t border-border">
                     {/* Search Type */}
                     <div>
-                      <label className="text-muted text-[11px] mb-1.5 block uppercase tracking-wider">🔍 Search Type</label>
+                      <label className="text-slate-600 text-sm mb-1.5 block uppercase tracking-wider">🔍 Search Type</label>
                       <div className="flex gap-2 flex-wrap">
                         {(["web", "image", "video", "news"] as SearchType[]).map(t => (
                           <button key={t} onClick={() => setSearchType(t)}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-bold capitalize transition-all ${searchType === t ? "bg-blue text-white" : "bg-surface text-muted border border-border hover:border-blue/50"}`}>
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold capitalize transition-all ${searchType === t ? "bg-blue text-white" : "bg-surface text-slate-600 border border-border hover:border-blue/50"}`}>
                             {t}
                           </button>
                         ))}
@@ -441,7 +448,7 @@ export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
 
                     {/* Dimensions */}
                     <div>
-                      <label className="text-muted text-[11px] mb-1.5 block uppercase tracking-wider">📐 Dimensions <span className="normal-case tracking-normal">(select 1–5)</span></label>
+                      <label className="text-slate-600 text-sm mb-1.5 block uppercase tracking-wider">📐 Dimensions <span className="normal-case tracking-normal">(select 1–5)</span></label>
                       <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                         {DIMENSION_OPTIONS.map(dim => {
                           const active = selectedDimensions.includes(dim.value);
@@ -449,36 +456,36 @@ export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
                             <button key={dim.value} onClick={() => toggleDimension(dim.value)}
                               disabled={!active && selectedDimensions.length >= 5}
                               title={dim.description}
-                              className={`text-left px-3 py-2 rounded-lg text-xs transition-all border ${active ? "bg-blue/10 border-blue/40 text-blue font-semibold" : "bg-surface border-border text-muted hover:border-blue/30 hover:text-text"} ${!active && selectedDimensions.length >= 5 ? "opacity-40 cursor-not-allowed" : "cursor-pointer"}`}>
+                              className={`text-left px-3 py-2 rounded-lg text-xs transition-all border ${active ? "bg-blue/10 border-blue/40 text-blue font-semibold" : "bg-surface border-border text-slate-600 hover:border-blue/30 hover:text-text"} ${!active && selectedDimensions.length >= 5 ? "opacity-40 cursor-not-allowed" : "cursor-pointer"}`}>
                               <div className="font-bold">{dim.label}</div>
                               <div className="text-[10px] opacity-70 mt-0.5">{dim.description}</div>
                             </button>
                           );
                         })}
                       </div>
-                      <div className="mt-1.5 text-[10px] text-muted">
+                      <div className="mt-1.5 text-[10px] text-slate-600">
                         Selected: <span className="text-text font-mono">{selectedDimensions.join(", ") || "none"}</span>
                       </div>
                     </div>
 
                     {/* Date Range */}
                     <div>
-                      <label className="text-muted text-[11px] mb-1.5 block uppercase tracking-wider">📅 Date Range</label>
+                      <label className="text-slate-600 text-sm mb-1.5 block uppercase tracking-wider">📅 Date Range</label>
                       <div className="flex gap-2 flex-wrap mb-2">
                         {datePresets.map(p => (
                           <button key={p.days} onClick={() => applyDatePreset(p.days)}
-                            className="px-3 py-1.5 rounded-md text-xs font-bold bg-surface text-muted hover:text-text border border-border hover:border-blue/50 transition-all">
+                            className="px-3 py-1.5 rounded-md text-xs font-bold bg-surface text-slate-600 hover:text-text border border-border hover:border-blue/50 transition-all">
                             {p.label}
                           </button>
                         ))}
                       </div>
                       <div className="grid grid-cols-2 gap-3">
                         <div>
-                          <label className="text-muted text-[10px] mb-1 block">From</label>
+                          <label className="text-slate-600 text-[10px] mb-1 block">From</label>
                           <Input value={startDate} onChange={setStartDate} type="date" />
                         </div>
                         <div>
-                          <label className="text-muted text-[10px] mb-1 block">To</label>
+                          <label className="text-slate-600 text-[10px] mb-1 block">To</label>
                           <Input value={endDate} onChange={setEndDate} type="date" />
                         </div>
                       </div>
@@ -487,7 +494,7 @@ export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
                     {/* Filters */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
-                        <label className="text-muted text-[11px] mb-1 block uppercase tracking-wider">🌐 Country</label>
+                        <label className="text-slate-600 text-sm mb-1 block uppercase tracking-wider">🌐 Country</label>
                         <select
                           value={countryFilter}
                           onChange={e => setCountryFilter(e.target.value)}
@@ -498,7 +505,7 @@ export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
                         </select>
                       </div>
                       <div>
-                        <label className="text-muted text-[11px] mb-1 block uppercase tracking-wider">📱 Device</label>
+                        <label className="text-slate-600 text-sm mb-1 block uppercase tracking-wider">📱 Device</label>
                         <select
                           value={deviceFilter}
                           onChange={e => setDeviceFilter(e.target.value)}
@@ -513,21 +520,21 @@ export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
 
                     {/* Aggregation */}
                     <div>
-                      <label className="text-muted text-[11px] mb-1.5 block uppercase tracking-wider">🔗 Aggregation</label>
+                      <label className="text-slate-600 text-sm mb-1.5 block uppercase tracking-wider">🔗 Aggregation</label>
                       <div className="flex gap-2">
                         {([["byProperty", "By Property (default)"], ["byPage", "By Page"]] as [AggregationType, string][]).map(([val, label]) => (
                           <button key={val} onClick={() => setAggregationType(val)}
-                            className={`flex-1 px-3 py-2 rounded-lg text-xs font-bold transition-all border ${aggregationType === val ? "bg-blue/10 border-blue/40 text-blue" : "bg-surface border-border text-muted hover:border-blue/30"}`}>
+                            className={`flex-1 px-3 py-2 rounded-lg text-xs font-bold transition-all border ${aggregationType === val ? "bg-blue/10 border-blue/40 text-blue" : "bg-surface border-border text-slate-600 hover:border-blue/30"}`}>
                             {label}
                           </button>
                         ))}
                       </div>
-                      <div className="mt-1 text-[10px] text-muted">"By Page" returns one row per URL; "By Property" aggregates across the whole site.</div>
+                      <div className="mt-1 text-[10px] text-slate-600">"By Page" returns one row per URL; "By Property" aggregates across the whole site.</div>
                     </div>
 
                     {/* Row limit */}
                     <div>
-                      <label className="text-muted text-[11px] mb-1.5 block uppercase tracking-wider">📊 Row Limit: <span className="text-text font-mono">{rowLimit.toLocaleString()}</span></label>
+                      <label className="text-slate-600 text-sm mb-1.5 block uppercase tracking-wider">📊 Row Limit: <span className="text-text font-mono">{rowLimit.toLocaleString()}</span></label>
                       <input
                         type="range"
                         min={100}
@@ -537,7 +544,7 @@ export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
                         onChange={e => setRowLimit(parseInt(e.target.value))}
                         className="w-full accent-blue"
                       />
-                      <div className="flex justify-between text-[10px] text-muted mt-1">
+                      <div className="flex justify-between text-[10px] text-slate-600 mt-1">
                         <span>100</span>
                         <span>5,000 (recommended)</span>
                         <span>10,000</span>
@@ -549,7 +556,7 @@ export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
 
               {/* Summary of selected config */}
               {siteUrl && selectedDimensions.length > 0 && (
-                <div className="bg-blue/5 border border-blue/20 rounded-lg px-3 py-2 text-[11px] text-muted flex flex-wrap gap-x-4 gap-y-1">
+                <div className="bg-blue/5 border border-blue/20 rounded-lg px-3 py-2 text-sm text-slate-600 flex flex-wrap gap-x-4 gap-y-1">
                   <span>🔍 <span className="text-text capitalize">{searchType}</span></span>
                   <span>📐 <span className="text-text">{selectedDimensions.join(", ")}</span></span>
                   <span>📅 <span className="text-text">{startDate} → {endDate}</span></span>
@@ -576,7 +583,7 @@ export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
 
       {/* Column Mapper Modal */}
       <Modal open={showColumnMapper} onClose={() => setShowColumnMapper(false)} title="📐 Map CSV Columns">
-        <div className="text-muted text-xs mb-4">Map your CSV columns to the expected GSC fields:</div>
+        <div className="text-slate-600 text-xs mb-4">Map your CSV columns to the expected GSC fields:</div>
         <div className="grid gap-3">
           {["query", "page", "clicks", "impressions", "ctr", "position"].map(field => (
             <div key={field} className="flex gap-2 items-center">
@@ -597,7 +604,7 @@ export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
         <div className="bg-green/5 border border-green/20 rounded-lg px-4 py-3 mb-4 flex justify-between items-center animate-fade-in">
           <div className="flex items-center gap-3">
             <span className="text-green text-sm font-bold">✓ {rows.length.toLocaleString()} rows loaded</span>
-            {siteUrl && <span className="text-muted text-xs">{siteUrl}</span>}
+            {siteUrl && <span className="text-slate-600 text-xs">{siteUrl}</span>}
           </div>
           <Button onClick={handleAnalyze} loading={loading}>🚀 Run Full Analysis</Button>
         </div>
@@ -641,9 +648,9 @@ export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
                 <StatCard label="Critical Gaps" value={ctr.criticalGaps.toString()} variant="red" />
               </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3">
-                <div className="bg-card border border-green/25 rounded-xl p-4 text-center"><div className="text-green text-xl font-extrabold font-mono">{ctr.aboveBenchmark}</div><div className="text-muted text-xs mt-1">Above Benchmark</div></div>
-                <div className="bg-card border border-amber/25 rounded-xl p-4 text-center"><div className="text-amber text-xl font-extrabold font-mono">{ctr.atBenchmark}</div><div className="text-muted text-xs mt-1">At Benchmark</div></div>
-                <div className="bg-card border border-red/25 rounded-xl p-4 text-center"><div className="text-red text-xl font-extrabold font-mono">{ctr.belowBenchmark}</div><div className="text-muted text-xs mt-1">Below Benchmark</div></div>
+                <div className="bg-card border border-green/25 rounded-xl p-4 text-center"><div className="text-green text-xl font-extrabold font-mono">{ctr.aboveBenchmark}</div><div className="text-slate-600 text-xs mt-1">Above Benchmark</div></div>
+                <div className="bg-card border border-amber/25 rounded-xl p-4 text-center"><div className="text-amber text-xl font-extrabold font-mono">{ctr.atBenchmark}</div><div className="text-slate-600 text-xs mt-1">At Benchmark</div></div>
+                <div className="bg-card border border-red/25 rounded-xl p-4 text-center"><div className="text-red text-xl font-extrabold font-mono">{ctr.belowBenchmark}</div><div className="text-slate-600 text-xs mt-1">Below Benchmark</div></div>
               </div>
             </Section>
           )}
@@ -676,7 +683,7 @@ export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
                         <Badge variant="muted">→ Details</Badge>
                       </div>
                     </div>
-                    <div className="text-muted text-[11px] mb-1">Position: {qw.position} · Impressions: {qw.impressions.toLocaleString()} · CTR: {qw.currentCTR}% → {qw.benchmarkCTR}%</div>
+                    <div className="text-slate-600 text-sm mb-1">Position: {qw.position} · Impressions: {qw.impressions.toLocaleString()} · CTR: {qw.currentCTR}% → {qw.benchmarkCTR}%</div>
                     <div className="text-blue text-xs">{qw.action}</div>
                   </div>
                 ))}
@@ -693,7 +700,7 @@ export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
                       <span className="text-text text-[13px] font-semibold">{gap.query}</span>
                       <Badge variant={gap.priority === "critical" ? "red" : gap.priority === "high" ? "amber" : "muted"}>{gap.priority}</Badge>
                     </div>
-                    <div className="text-muted text-[11px]">Position: {gap.position} · Impressions: {gap.impressions.toLocaleString()} · Reason: {gap.zeroClickReason}</div>
+                    <div className="text-slate-600 text-sm">Position: {gap.position} · Impressions: {gap.impressions.toLocaleString()} · Reason: {gap.zeroClickReason}</div>
                     <div className="text-green text-xs mt-1">{gap.fix}</div>
                   </div>
                 ))}
@@ -712,7 +719,7 @@ export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
                     </div>
                     <DataTable
                       columns={[
-                        { key: "url", label: "URL", render: (v) => <span className="text-muted truncate max-w-[200px] block">{String(v).replace(/^https?:\/\/[^/]+/, "")}</span> },
+                        { key: "url", label: "URL", render: (v) => <span className="text-slate-600 truncate max-w-[200px] block">{String(v).replace(/^https?:\/\/[^/]+/, "")}</span> },
                         { key: "clicks", label: "Clicks" }, { key: "impressions", label: "Impr" },
                         { key: "position", label: "Pos", render: (v) => <span>{Number(v).toFixed(1)}</span> },
                         { key: "shareOfClicks", label: "Share", render: (v) => <span>{Number(v).toFixed(0)}%</span> },
@@ -730,7 +737,7 @@ export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
             <Section title="🏥 Page Health Scores" accent="purple">
               <DataTable
                 columns={[
-                  { key: "url", label: "URL", render: (v) => <span className="text-muted truncate max-w-[200px] block">{String(v).replace(/^https?:\/\/[^/]+/, "") || "/"}</span> },
+                  { key: "url", label: "URL", render: (v) => <span className="text-slate-600 truncate max-w-[200px] block">{String(v).replace(/^https?:\/\/[^/]+/, "") || "/"}</span> },
                   { key: "healthGrade", label: "Grade", render: (v) => { const gc: Record<string, string> = { A: "green", B: "blue", C: "amber", D: "red", F: "red" }; return <Badge variant={(gc[String(v)] || "muted") as "green"}>{String(v)}</Badge>; } },
                   { key: "totalClicks", label: "Clicks", render: (v) => <span>{Number(v).toLocaleString()}</span> },
                   { key: "avgCTR", label: "CTR", render: (v) => <span>{Number(v).toFixed(2)}%</span> },
@@ -762,7 +769,7 @@ export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
                         <Badge variant="muted">→ Details</Badge>
                       </div>
                     </div>
-                    <div className="text-muted text-[11px]">Position: {c.position} · Impressions: {c.impressions.toLocaleString()} · Score: {c.eligibilityScore}/10</div>
+                    <div className="text-slate-600 text-sm">Position: {c.position} · Impressions: {c.impressions.toLocaleString()} · Score: {c.eligibilityScore}/10</div>
                     <div className="text-blue text-xs mt-1">{c.optimizationFocus}</div>
                   </div>
                 ))}
@@ -776,11 +783,11 @@ export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
                 <span className="text-blue text-xs font-semibold">💡 Click any item to see detailed analysis + AI step-by-step implementation plan</span>
               </div>
               <div className="flex gap-3 flex-wrap mb-4 p-3 bg-surface rounded-lg border border-border">
-                <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-blue"/></div><span className="text-muted text-[11px]">CTR Fix</span>
-                <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-amber"/></div><span className="text-muted text-[11px]">Content Gap</span>
-                <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-red"/></div><span className="text-muted text-[11px]">Cannibalization</span>
-                <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-purple"/></div><span className="text-muted text-[11px]">Position Push</span>
-                <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-cyan"/></div><span className="text-muted text-[11px]">SERP Features</span>
+                <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-blue"/></div><span className="text-slate-600 text-sm">CTR Fix</span>
+                <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-amber"/></div><span className="text-slate-600 text-sm">Content Gap</span>
+                <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-red"/></div><span className="text-slate-600 text-sm">Cannibalization</span>
+                <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-purple"/></div><span className="text-slate-600 text-sm">Position Push</span>
+                <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-cyan"/></div><span className="text-slate-600 text-sm">SERP Features</span>
               </div>
               <div className="grid gap-3">
                 {result.priorityMatrix.filter(p => p.impact === "critical" || p.impact === "high").slice(0, 5).map((item, i) => (
@@ -791,7 +798,7 @@ export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
                         <div className="flex items-center gap-2 mb-1">
                           <span className="text-text font-bold text-sm">{item.query}</span>
                           <span className={`w-2 h-2 rounded-full flex-shrink-0 ${item.category === "ctr" ? "bg-blue" : item.category === "content_gap" ? "bg-amber" : item.category === "cannibalization" ? "bg-red" : item.category === "position" ? "bg-purple" : "bg-cyan"}`}/>
-                          <span className="text-muted text-[11px] capitalize">{item.category.replace("_", " ")}</span>
+                          <span className="text-slate-600 text-sm capitalize">{item.category.replace("_", " ")}</span>
                           {item.impact === "critical" && <span className="text-[10px] bg-red/10 text-red px-1.5 py-0.5 rounded font-bold">CRITICAL</span>}
                           {item.impact === "high" && <span className="text-[10px] bg-amber/10 text-amber px-1.5 py-0.5 rounded font-bold">HIGH</span>}
                         </div>
@@ -799,20 +806,20 @@ export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
                       </div>
                       <div className="text-right flex-shrink-0">
                         <div className="text-xl font-extrabold text-blue font-mono">{item.opportunityScore}</div>
-                        <div className="text-[10px] text-muted">score</div>
+                        <div className="text-[10px] text-slate-600">score</div>
                       </div>
                     </div>
-                    <div className="flex items-center gap-4 text-[11px]">
-                      <span className="text-muted">Effort: <strong className={item.effort === "low" ? "text-green" : item.effort === "medium" ? "text-amber" : "text-red"}>{item.effort}</strong></span>
-                      <span className="text-muted">Time: <strong className="text-text">{item.timeToValue}</strong></span>
-                      <span className="text-muted">Commercial: <strong className="text-text">{item.commercialValue}/100</strong></span>
+                    <div className="flex items-center gap-4 text-sm">
+                      <span className="text-slate-600">Effort: <strong className={item.effort === "low" ? "text-green" : item.effort === "medium" ? "text-amber" : "text-red"}>{item.effort}</strong></span>
+                      <span className="text-slate-600">Time: <strong className="text-text">{item.timeToValue}</strong></span>
+                      <span className="text-slate-600">Commercial: <strong className="text-text">{item.commercialValue}/100</strong></span>
                       <Badge variant="muted" className="ml-auto">→ View Plan</Badge>
                     </div>
                   </div>
                 ))}
                 {result.priorityMatrix.filter(p => p.impact === "medium" || p.impact === "low").slice(0, 5).length > 0 && (
                   <div className="mt-2">
-                    <div className="text-muted text-[11px] uppercase tracking-wider mb-2">More Items</div>
+                    <div className="text-slate-600 text-sm uppercase tracking-wider mb-2">More Items</div>
                     <div className="grid gap-2">
                       {result.priorityMatrix.filter(p => p.impact === "medium" || p.impact === "low").slice(0, 5).map((item, i) => (
                         <div key={i} onClick={() => setSelectedPriorityItem(item)}
@@ -821,10 +828,10 @@ export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
                             <div className="flex items-center gap-2">
                               <span className={`w-1.5 h-1.5 rounded-full ${item.category === "ctr" ? "bg-blue" : item.category === "content_gap" ? "bg-amber" : item.category === "cannibalization" ? "bg-red" : item.category === "position" ? "bg-purple" : "bg-cyan"}`}/>
                               <span className="text-text text-[12px]">{item.query}</span>
-                              <span className="text-muted text-[10px] capitalize">{item.category.replace("_", " ")}</span>
+                              <span className="text-slate-600 text-[10px] capitalize">{item.category.replace("_", " ")}</span>
                             </div>
                             <div className="flex items-center gap-3">
-                              <span className="text-muted text-[11px]">{item.effort} effort · {item.timeToValue}</span>
+                              <span className="text-slate-600 text-sm">{item.effort} effort · {item.timeToValue}</span>
                               <Badge variant="muted">→</Badge>
                             </div>
                           </div>
@@ -843,19 +850,19 @@ export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
                 <div className="text-text text-[13px] leading-relaxed mb-4">{result.aiSynthesis.executiveSummary}</div>
                 {result.aiSynthesis.criticalFindings?.length ? (
                   <div className="mb-3">
-                    <div className="text-red text-[11px] uppercase tracking-wider mb-1.5">Critical Findings</div>
+                    <div className="text-red text-sm uppercase tracking-wider mb-1.5">Critical Findings</div>
                     {result.aiSynthesis.criticalFindings.map((f, i) => <div key={i} className="text-text text-xs mb-1">• {f}</div>)}
                   </div>
                 ) : null}
                 {result.aiSynthesis.winningStrategy && (
                   <div className="mb-3">
-                    <div className="text-green text-[11px] uppercase tracking-wider mb-1.5">Winning Strategy</div>
+                    <div className="text-green text-sm uppercase tracking-wider mb-1.5">Winning Strategy</div>
                     <div className="text-text text-xs">{result.aiSynthesis.winningStrategy}</div>
                   </div>
                 )}
                 {result.aiSynthesis.investmentPriority?.length ? (
                   <div>
-                    <div className="text-blue text-[11px] uppercase tracking-wider mb-1.5">Investment Priority</div>
+                    <div className="text-blue text-sm uppercase tracking-wider mb-1.5">Investment Priority</div>
                     {result.aiSynthesis.investmentPriority.map((p, i) => <div key={i} className="text-text text-xs mb-1">{i + 1}. {p}</div>)}
                   </div>
                 ) : null}

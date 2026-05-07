@@ -102,7 +102,7 @@ export function AiOverviewDetailModal({ open, onClose, candidate }: AiOverviewDe
       <div className={`rounded-xl border p-4 mb-4 ${eligibilityBg[candidate.eligibility]}`}>
         <div className="flex items-start justify-between gap-3">
           <div>
-            <div className="text-[11px] uppercase tracking-wider text-muted mb-1">🎯 AI Overview Eligibility</div>
+            <div className="text-[11px] uppercase tracking-wider text-slate-600 mb-1">🎯 AI Overview Eligibility</div>
             <div className="text-text text-sm font-semibold mb-2">
               {candidate.eligibility === "high" ? (
                 <>
@@ -118,7 +118,7 @@ export function AiOverviewDetailModal({ open, onClose, candidate }: AiOverviewDe
                 </>
               ) : (
                 <>
-                  This query has <strong className="text-muted">low eligibility</strong> for AI Overview right now. 
+                  This query has <strong className="text-slate-600">low eligibility</strong> for AI Overview right now. 
                   Focus on ranking improvements and E-E-A-T signals before optimizing specifically for AI Overview.
                 </>
               )}
@@ -140,16 +140,16 @@ export function AiOverviewDetailModal({ open, onClose, candidate }: AiOverviewDe
         <div className="flex items-center gap-3 mb-3">
           <span className="text-2xl">{formatIcons[candidate.contentFormat] || "📝"}</span>
           <div>
-            <div className="text-[11px] uppercase tracking-wider text-muted">Content Format Detected</div>
+            <div className="text-[11px] uppercase tracking-wider text-slate-600">Content Format Detected</div>
             <div className="text-text font-bold">{candidate.contentFormat}</div>
           </div>
           <div className="ml-auto text-right">
-            <div className="text-[11px] uppercase tracking-wider text-muted">Intent</div>
+            <div className="text-[11px] uppercase tracking-wider text-slate-600">Intent</div>
             <div className="text-text font-bold capitalize">{candidate.intent}</div>
           </div>
         </div>
         <div className="bg-surface rounded-lg p-3">
-          <div className="text-[11px] uppercase tracking-wider text-muted mb-1">AI's Assessment</div>
+          <div className="text-[11px] uppercase tracking-wider text-slate-600 mb-1">AI's Assessment</div>
           <div className="text-text text-[13px]">{candidate.optimizationFocus}</div>
         </div>
       </div>
@@ -184,7 +184,7 @@ export function AiOverviewDetailModal({ open, onClose, candidate }: AiOverviewDe
       {/* AI Content Plan */}
       <div className="mb-4">
         <div className="flex items-center justify-between mb-3">
-          <div className="text-[11px] uppercase tracking-wider text-muted">🧠 AI Content Optimization Plan</div>
+          <div className="text-[11px] uppercase tracking-wider text-slate-600">🧠 AI Content Optimization Plan</div>
           {!aiPlan && (
             <Button
               size="sm"
@@ -211,7 +211,7 @@ export function AiOverviewDetailModal({ open, onClose, candidate }: AiOverviewDe
                   className={`px-2.5 py-1 rounded-full text-[11px] font-bold transition-all ${
                     activeStep === i
                       ? "bg-purple text-white"
-                      : "bg-surface text-muted border border-border hover:border-purple/50"
+                      : "bg-surface text-slate-600 border border-border hover:border-purple/50"
                   }`}
                 >
                   {step.stepNumber}. {step.title}
@@ -234,7 +234,7 @@ export function AiOverviewDetailModal({ open, onClose, candidate }: AiOverviewDe
                         {aiPlan[activeStep].difficulty}
                       </Badge>
                     </div>
-                    <div className="text-muted text-[11px] mb-2">
+                    <div className="text-slate-600 text-[11px] mb-2">
                       ⏱️ {aiPlan[activeStep].estimatedTime} · Expected impact: <strong className="text-green">{aiPlan[activeStep].expectedLift}</strong>
                     </div>
                     <div className="text-text text-[13px] leading-relaxed">{aiPlan[activeStep].description}</div>
@@ -243,7 +243,7 @@ export function AiOverviewDetailModal({ open, onClose, candidate }: AiOverviewDe
 
                 {aiPlan[activeStep].requirements && aiPlan[activeStep].requirements.length > 0 && (
                   <div className="bg-surface rounded-lg p-3 mt-2">
-                    <div className="text-[10px] uppercase tracking-wider text-muted mb-1.5">📋 Requirements</div>
+                    <div className="text-[10px] uppercase tracking-wider text-slate-600 mb-1.5">📋 Requirements</div>
                     {aiPlan[activeStep].requirements!.map((req, i) => (
                       <div key={i} className="text-text text-[12px] mb-1">• {req}</div>
                     ))}
@@ -252,7 +252,7 @@ export function AiOverviewDetailModal({ open, onClose, candidate }: AiOverviewDe
 
                 {aiPlan[activeStep].checklist && aiPlan[activeStep].checklist.length > 0 && (
                   <div className="bg-surface rounded-lg p-3 mt-2">
-                    <div className="text-[10px] uppercase tracking-wider text-muted mb-1.5">✅ Checklist</div>
+                    <div className="text-[10px] uppercase tracking-wider text-slate-600 mb-1.5">✅ Checklist</div>
                     {aiPlan[activeStep].checklist!.map((item, i) => (
                       <div key={i} className="text-text text-[12px] mb-1 flex items-start gap-2">
                         <input type="checkbox" className="mt-0.5 accent-purple" /> {item}
@@ -263,7 +263,7 @@ export function AiOverviewDetailModal({ open, onClose, candidate }: AiOverviewDe
 
                 {aiPlan[activeStep].codeExample && (
                   <div className="bg-surface rounded-lg p-3 mt-3">
-                    <div className="text-[10px] uppercase tracking-wider text-muted mb-1.5">💻 Code Example</div>
+                    <div className="text-[10px] uppercase tracking-wider text-slate-600 mb-1.5">💻 Code Example</div>
                     <pre className="text-[11px] text-green font-mono whitespace-pre-wrap overflow-x-auto">
                       {aiPlan[activeStep].codeExample}
                     </pre>
@@ -285,7 +285,7 @@ export function AiOverviewDetailModal({ open, onClose, candidate }: AiOverviewDe
               <div className="flex-1 bg-surface rounded-full h-1.5">
                 <div className="bg-purple h-full rounded-full transition-all" style={{ width: `${((activeStep + 1) / aiPlan.length) * 100}%` }} />
               </div>
-              <span className="text-muted text-[10px]">{activeStep + 1}/{aiPlan.length} steps</span>
+              <span className="text-slate-600 text-[10px]">{activeStep + 1}/{aiPlan.length} steps</span>
             </div>
           </div>
         )}
@@ -293,23 +293,23 @@ export function AiOverviewDetailModal({ open, onClose, candidate }: AiOverviewDe
         {!aiPlan && !loadingAi && (
           <div className="bg-surface border border-border border-dashed rounded-xl p-6 text-center">
             <div className="text-2xl mb-2">🧠</div>
-            <div className="text-muted text-xs">Click "Generate Plan" to get a personalized content restructuring plan for AI Overview eligibility.</div>
+            <div className="text-slate-600 text-xs">Click "Generate Plan" to get a personalized content restructuring plan for AI Overview eligibility.</div>
           </div>
         )}
       </div>
 
       {/* Raw Data */}
       <div className="bg-surface border border-border rounded-xl p-4">
-        <div className="text-[11px] uppercase tracking-wider text-muted mb-2">📋 Raw Data</div>
+        <div className="text-[11px] uppercase tracking-wider text-slate-600 mb-2">📋 Raw Data</div>
         <div className="grid grid-cols-2 gap-2 text-[11px]">
-          <div className="flex justify-between"><span className="text-muted">Query:</span><span className="text-text font-mono truncate max-w-[200px]">{candidate.query}</span></div>
-          <div className="flex justify-between"><span className="text-muted">Format:</span><span className="text-text">{candidate.contentFormat}</span></div>
-          <div className="flex justify-between"><span className="text-muted">Page:</span><span className="text-text font-mono truncate max-w-[200px]">{candidate.page.replace(/^https?:\/\/[^/]+/, "")}</span></div>
-          <div className="flex justify-between"><span className="text-muted">Position:</span><span className="text-text">{candidate.position}</span></div>
-          <div className="flex justify-between"><span className="text-muted">Impressions:</span><span className="text-text">{candidate.impressions.toLocaleString()}</span></div>
-          <div className="flex justify-between"><span className="text-muted">CTR:</span><span className="text-text">{candidate.ctr}%</span></div>
-          <div className="flex justify-between"><span className="text-muted">Eligibility:</span><span className={`font-bold ${candidate.eligibility === "high" ? "text-green" : candidate.eligibility === "medium" ? "text-amber" : "text-muted"}`}>{candidate.eligibility}</span></div>
-          <div className="flex justify-between"><span className="text-muted">Score:</span><span className="text-text">{candidate.eligibilityScore}/10</span></div>
+          <div className="flex justify-between"><span className="text-slate-600">Query:</span><span className="text-text font-mono truncate max-w-[200px]">{candidate.query}</span></div>
+          <div className="flex justify-between"><span className="text-slate-600">Format:</span><span className="text-text">{candidate.contentFormat}</span></div>
+          <div className="flex justify-between"><span className="text-slate-600">Page:</span><span className="text-text font-mono truncate max-w-[200px]">{candidate.page.replace(/^https?:\/\/[^/]+/, "")}</span></div>
+          <div className="flex justify-between"><span className="text-slate-600">Position:</span><span className="text-text">{candidate.position}</span></div>
+          <div className="flex justify-between"><span className="text-slate-600">Impressions:</span><span className="text-text">{candidate.impressions.toLocaleString()}</span></div>
+          <div className="flex justify-between"><span className="text-slate-600">CTR:</span><span className="text-text">{candidate.ctr}%</span></div>
+          <div className="flex justify-between"><span className="text-slate-600">Eligibility:</span><span className={`font-bold ${candidate.eligibility === "high" ? "text-green" : candidate.eligibility === "medium" ? "text-amber" : "text-slate-600"}`}>{candidate.eligibility}</span></div>
+          <div className="flex justify-between"><span className="text-slate-600">Score:</span><span className="text-text">{candidate.eligibilityScore}/10</span></div>
         </div>
       </div>
     </Modal>

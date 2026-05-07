@@ -96,8 +96,8 @@ export function QuickWinDetailModal({ open, onClose, quickWin }: QuickWinDetailM
       <div className={`rounded-xl border p-4 mb-4 ${effortBg[quickWin.effort]}`}>
         <div className="flex items-start justify-between gap-3">
           <div>
-            <div className="text-[11px] uppercase tracking-wider text-muted mb-1">🎯 Opportunity Summary</div>
-            <div className="text-text text-sm font-semibold mb-2">
+            <div className="text-[11px] uppercase tracking-wider text-slate-600 mb-1">🎯 Opportunity Summary</div>
+            <div className="text-text text-base font-semibold mb-2">
               Your page ranks at <span className="text-amber font-bold">position {quickWin.position}</span> but only gets{" "}
               <span className="text-red font-bold">{quickWin.currentCTR}%</span> CTR.
               For this position and query type, you should be getting{" "}
@@ -117,9 +117,9 @@ export function QuickWinDetailModal({ open, onClose, quickWin }: QuickWinDetailM
 
       {/* The Gap Visual */}
       <div className="bg-card border border-border rounded-xl p-4 mb-4">
-        <div className="text-[11px] uppercase tracking-wider text-muted mb-3">📊 CTR Gap Analysis</div>
+        <div className="text-[11px] uppercase tracking-wider text-slate-600 mb-3">📊 CTR Gap Analysis</div>
         <div className="flex items-center gap-3 mb-2">
-          <span className="text-muted text-xs w-20">Current CTR</span>
+          <span className="text-slate-600 text-xs w-20">Current CTR</span>
           <div className="flex-1 bg-red/20 rounded-full h-4 relative overflow-hidden">
             <div
               className="bg-red h-full rounded-full flex items-center justify-end pr-2 transition-all duration-700"
@@ -130,7 +130,7 @@ export function QuickWinDetailModal({ open, onClose, quickWin }: QuickWinDetailM
           </div>
         </div>
         <div className="flex items-center gap-3 mb-3">
-          <span className="text-muted text-xs w-20">Benchmark</span>
+          <span className="text-slate-600 text-xs w-20">Benchmark</span>
           <div className="flex-1 bg-green/20 rounded-full h-4 relative overflow-hidden">
             <div
               className="bg-green h-full rounded-full flex items-center justify-end pr-2"
@@ -141,8 +141,8 @@ export function QuickWinDetailModal({ open, onClose, quickWin }: QuickWinDetailM
           </div>
         </div>
         <div className="text-center">
-          <span className="text-red text-sm font-bold">Gap: -{gapPercent}%</span>
-          <span className="text-muted text-xs ml-3">
+          <span className="text-red text-base font-bold">Gap: -{gapPercent}%</span>
+          <span className="text-slate-600 text-xs ml-3">
             Closing this gap = <strong className="text-green">+{totalMonthlyGain} clicks/month</strong>
           </span>
         </div>
@@ -178,7 +178,7 @@ export function QuickWinDetailModal({ open, onClose, quickWin }: QuickWinDetailM
       {/* AI Content Plan */}
       <div className="mb-4">
         <div className="flex items-center justify-between mb-3">
-          <div className="text-[11px] uppercase tracking-wider text-muted">🧠 AI-Generated Implementation Plan</div>
+          <div className="text-[11px] uppercase tracking-wider text-slate-600">🧠 AI-Generated Implementation Plan</div>
           {!aiPlan && (
             <Button
               size="sm"
@@ -206,7 +206,7 @@ export function QuickWinDetailModal({ open, onClose, quickWin }: QuickWinDetailM
                   className={`px-2.5 py-1 rounded-full text-[11px] font-bold transition-all ${
                     activeStep === i
                       ? "bg-blue text-white"
-                      : "bg-surface text-muted border border-border hover:border-blue/50"
+                      : "bg-surface text-slate-600 border border-border hover:border-blue/50"
                   }`}
                 >
                   {step.stepNumber}. {step.title}
@@ -219,18 +219,18 @@ export function QuickWinDetailModal({ open, onClose, quickWin }: QuickWinDetailM
               <div className="bg-card border border-border rounded-xl p-4">
                 <div className="flex items-start gap-3 mb-3">
                   <div className="w-8 h-8 rounded-full bg-blue/20 flex items-center justify-center flex-shrink-0">
-                    <span className="text-blue font-bold text-sm">{aiPlan[activeStep].stepNumber}</span>
+                    <span className="text-blue font-bold text-base">{aiPlan[activeStep].stepNumber}</span>
                   </div>
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="text-text font-bold text-sm">
+                      <span className="text-text font-bold text-base">
                         {stepTypeIcons[aiPlan[activeStep].actionType] || "📋"} {aiPlan[activeStep].title}
                       </span>
                       <Badge variant={aiPlan[activeStep].difficulty === "easy" ? "green" : aiPlan[activeStep].difficulty === "medium" ? "amber" : "red"}>
                         {aiPlan[activeStep].difficulty}
                       </Badge>
                     </div>
-                    <div className="text-muted text-[11px] mb-2">
+                    <div className="text-slate-600 text-[11px] mb-2">
                       ⏱️ {aiPlan[activeStep].estimatedTime} · Expected lift: <strong className="text-green">{aiPlan[activeStep].expectedLift}</strong>
                     </div>
                     <div className="text-text text-[13px] leading-relaxed">{aiPlan[activeStep].description}</div>
@@ -239,7 +239,7 @@ export function QuickWinDetailModal({ open, onClose, quickWin }: QuickWinDetailM
 
                 {aiPlan[activeStep].codeExample && (
                   <div className="bg-surface rounded-lg p-3 mt-2">
-                    <div className="text-[10px] uppercase tracking-wider text-muted mb-1.5">💻 Code Example</div>
+                    <div className="text-[10px] uppercase tracking-wider text-slate-600 mb-1.5">💻 Code Example</div>
                     <pre className="text-[11px] text-green font-mono whitespace-pre-wrap overflow-x-auto">
                       {aiPlan[activeStep].codeExample}
                     </pre>
@@ -289,7 +289,7 @@ export function QuickWinDetailModal({ open, onClose, quickWin }: QuickWinDetailM
                   style={{ width: `${((activeStep + 1) / aiPlan.length) * 100}%` }}
                 />
               </div>
-              <span className="text-muted text-[10px]">{activeStep + 1}/{aiPlan.length} steps</span>
+              <span className="text-slate-600 text-[10px]">{activeStep + 1}/{aiPlan.length} steps</span>
             </div>
           </div>
         )}
@@ -297,23 +297,23 @@ export function QuickWinDetailModal({ open, onClose, quickWin }: QuickWinDetailM
         {!aiPlan && !loadingAi && (
           <div className="bg-surface border border-border border-dashed rounded-xl p-6 text-center">
             <div className="text-2xl mb-2">🧠</div>
-            <div className="text-muted text-xs">Click "Generate Plan" to get an AI-customized step-by-step implementation guide for this specific keyword and page.</div>
+            <div className="text-slate-600 text-xs">Click "Generate Plan" to get an AI-customized step-by-step implementation guide for this specific keyword and page.</div>
           </div>
         )}
       </div>
 
       {/* Raw Data */}
       <div className="bg-surface border border-border rounded-xl p-4">
-        <div className="text-[11px] uppercase tracking-wider text-muted mb-2">📋 Raw Data</div>
+        <div className="text-[11px] uppercase tracking-wider text-slate-600 mb-2">📋 Raw Data</div>
         <div className="grid grid-cols-2 gap-2 text-[11px]">
-          <div className="flex justify-between"><span className="text-muted">Query:</span><span className="text-text font-mono truncate max-w-[200px]">{quickWin.query}</span></div>
-          <div className="flex justify-between"><span className="text-muted">Intent:</span><span className="text-text">{intentLabel}</span></div>
-          <div className="flex justify-between"><span className="text-muted">Page:</span><span className="text-text font-mono truncate max-w-[200px]">{quickWin.page.replace(/^https?:\/\/[^/]+/, "")}</span></div>
-          <div className="flex justify-between"><span className="text-muted">Position:</span><span className="text-text">{quickWin.position}</span></div>
-          <div className="flex justify-between"><span className="text-muted">Impressions:</span><span className="text-text">{quickWin.impressions.toLocaleString()}</span></div>
-          <div className="flex justify-between"><span className="text-muted">Current CTR:</span><span className="text-red">{quickWin.currentCTR}%</span></div>
-          <div className="flex justify-between"><span className="text-muted">Benchmark CTR:</span><span className="text-green">{quickWin.benchmarkCTR}%</span></div>
-          <div className="flex justify-between"><span className="text-muted">Est. gain:</span><span className="text-green">+{totalMonthlyGain}</span></div>
+          <div className="flex justify-between"><span className="text-slate-600">Query:</span><span className="text-text font-mono truncate max-w-[200px]">{quickWin.query}</span></div>
+          <div className="flex justify-between"><span className="text-slate-600">Intent:</span><span className="text-text">{intentLabel}</span></div>
+          <div className="flex justify-between"><span className="text-slate-600">Page:</span><span className="text-text font-mono truncate max-w-[200px]">{quickWin.page.replace(/^https?:\/\/[^/]+/, "")}</span></div>
+          <div className="flex justify-between"><span className="text-slate-600">Position:</span><span className="text-text">{quickWin.position}</span></div>
+          <div className="flex justify-between"><span className="text-slate-600">Impressions:</span><span className="text-text">{quickWin.impressions.toLocaleString()}</span></div>
+          <div className="flex justify-between"><span className="text-slate-600">Current CTR:</span><span className="text-red">{quickWin.currentCTR}%</span></div>
+          <div className="flex justify-between"><span className="text-slate-600">Benchmark CTR:</span><span className="text-green">{quickWin.benchmarkCTR}%</span></div>
+          <div className="flex justify-between"><span className="text-slate-600">Est. gain:</span><span className="text-green">+{totalMonthlyGain}</span></div>
         </div>
       </div>
     </Modal>
