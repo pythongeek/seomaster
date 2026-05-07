@@ -17,8 +17,8 @@ async function getStoredToken(email: string) {
 }
 
 async function refreshAccessToken(refreshToken: string) {
-  const clientId = process.env.GOOGLE_CLIENT_ID || "";
-  const clientSecret = process.env.GOOGLE_CLIENT_SECRET || "";
+  const clientId = process.env.GOOGLE_CLIENT_ID || process.env.Client_ID || "";
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET || process.env.Client_secret || "";
 
   const res = await fetch(GOOGLE_TOKEN_URL, {
     method: "POST",

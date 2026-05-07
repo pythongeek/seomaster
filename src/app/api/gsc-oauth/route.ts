@@ -4,7 +4,23 @@ import { sql } from "@/lib/database";
 export const runtime = "nodejs";
 
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
-const GOOGLE_REVOKE_URL = "https://oauth2.googleapis.com/revoke";
+
+// Auto-create table if not exists
+async function ensureSchema() {
+  if (!sql) return;
+  await sql`
+    CREATE TABLE IF NOT EXISTS gsc_oauth_tokens (
+      id SERIAL PRIMARY KEY,
+      user_email TEXT UNIQUE NOT NULL,
+      access_token TEXT NOT NULL,
+      refresh_token TEXT NOT NULL,
+      token_type TEXT DEFAULT 'Bearer',
+      expires_at TIMESTAMP NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `;
+}
 
 // Token management
 async function getStoredToken(email: string) {
@@ -19,8 +35,8 @@ async function getStoredToken(email: string) {
 }
 
 async function refreshAccessToken(refreshToken: string): Promise<{ access_token: string; expires_in: number } | null> {
-  const clientId = process.env.GOOGLE_CLIENT_ID || "";
-  const clientSecret = process.env.GOOGLE_CLIENT_SECRET || "";
+  const clientId = process.env.GOOGLE_CLIENT_ID || process.env.Client_ID || "";
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET || process.env.Client_secret || "";
 
   try {
     const res = await fetch(GOOGLE_TOKEN_URL, {

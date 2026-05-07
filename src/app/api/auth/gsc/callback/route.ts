@@ -3,8 +3,8 @@ import { sql } from "@/lib/database";
 
 export const runtime = "nodejs";
 
-const CLIENT_ID = process.env.GOOGLE_CLIENT_ID || "";
-const CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || "";
+const CLIENT_ID = process.env.GOOGLE_CLIENT_ID || process.env.Client_ID || "";
+const CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || process.env.Client_secret || "";
 const REDIRECT_URI = `https://seomaster-beta.vercel.app/api/auth/gsc/callback`;
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo";

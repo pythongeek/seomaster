@@ -1,20 +1,27 @@
 import { NextResponse } from "next/server";
-import crypto from "crypto";
 
 export const runtime = "nodejs";
 
-const CLIENT_ID = process.env.GOOGLE_CLIENT_ID || "";
-const CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || "";
+const CLIENT_ID = process.env.GOOGLE_CLIENT_ID || process.env.Client_ID || "";
+const CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || process.env.Client_secret || "";
 const REDIRECT_URI = `https://seomaster-beta.vercel.app/api/auth/gsc/callback`;
 
 // Google OAuth endpoints
 const GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
-const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const SCOPES = [
   "https://www.googleapis.com/auth/webmasters.readonly",
   "https://www.googleapis.com/auth/userinfo.email",
   "https://www.googleapis.com/auth/userinfo.profile",
 ].join(" ");
+
+function generateState() {
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  let result = "";
+  const array = new Uint8Array(32);
+  require("crypto").randomFillSync(array);
+  for (let i = 0; i < 32; i++) result += chars[array[i] % chars.length];
+  return result;
+}
 
 export async function GET() {
   if (!CLIENT_ID || !CLIENT_SECRET) {
@@ -24,8 +31,7 @@ export async function GET() {
     );
   }
 
-  // Generate state token to protect against CSRF
-  const state = crypto.randomBytes(32).toString("hex");
+  const state = generateState();
 
   // Build Google OAuth URL
   const params = new URLSearchParams({
@@ -33,7 +39,7 @@ export async function GET() {
     redirect_uri: REDIRECT_URI,
     response_type: "code",
     scope: SCOPES,
-    access_type: "offline", // Get refresh token
+    access_type: "offline",
     prompt: "consent",
     state,
   });
