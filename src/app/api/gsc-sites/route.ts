@@ -73,9 +73,11 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Database not configured" }, { status: 500 });
     }
 
+    console.log("[GSC Sites] sql available:", !!sql);
     await ensureSchema();
 
     const token = await getStoredToken(requestedEmail || undefined);
+    console.log("[GSC Sites] token found:", !!token, requestedEmail);
     if (!token) {
       return NextResponse.json({ error: "Not connected" }, { status: 401 });
     }
