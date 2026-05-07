@@ -4,24 +4,64 @@
 
 /* ─── Design Tokens ───────────────────────────────────────────────────────── */
 :root {
-  --bg: #09090B;
-  --surface: #18181B;
-  --card: #27272A;
-  --border: #3F3F46;
-  --border-subtle: #27272A;
-  --blue: #3B82F6;
-  --blue-dim: #1D4ED8;
-  --green: #10B981;
-  --amber: #F59E0B;
+  /* Light theme — white bg, vibrant red/green indicators */
+  --bg: #FFFFFF;
+  --surface: #F8F9FA;
+  --card: #FFFFFF;
+  --card-hover: #F1F5F9;
+  --border: #E2E8F0;
+  --border-subtle: #F1F5F9;
+  --border-strong: #CBD5E1;
+
+  /* Primary accent — vibrant red (primary actions, alerts) */
   --red: #EF4444;
+  --red-light: #FEE2E2;
+  --red-dark: #DC2626;
+
+  /* Success — vibrant green (positive indicators) */
+  --green: #22C55E;
+  --green-light: #DCFCE7;
+  --green-dark: #16A34A;
+
+  /* Amber/warning */
+  --amber: #F59E0B;
+  --amber-light: #FEF3C7;
+
+  /* Blue — secondary actions */
+  --blue: #3B82F6;
+  --blue-light: #DBEAFE;
+  --blue-dark: #2563EB;
+
+  /* Purple */
   --purple: #8B5CF6;
+  --purple-light: #EDE9FE;
+
+  /* Cyan */
   --cyan: #06B6D4;
-  --text: #FAFAFA;
-  --muted: #71717A;
-  --muted-light: #A1A1AA;
-  --zinc-800: #27272A;
-  --zinc-900: #18181B;
-  --zinc-950: #09090B;
+  --cyan-light: #CFFAFE;
+
+  /* Text */
+  --text: #0F172A;
+  --text-secondary: #334155;
+  --muted: #94A3B8;
+  --muted-light: #CBD5E1;
+
+  /* Positive/Negative status */
+  --positive: #22C55E;
+  --negative: #EF4444;
+  --warning: #F59E0B;
+
+  /* Shadows — soft, light-theme appropriate */
+  --shadow-sm: 0 1px 2px 0 rgba(0,0,0,0.05);
+  --shadow: 0 1px 3px 0 rgba(0,0,0,0.08), 0 1px 2px -1px rgba(0,0,0,0.04);
+  --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.07), 0 2px 4px -2px rgba(0,0,0,0.04);
+  --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.08), 0 4px 6px -4px rgba(0,0,0,0.04);
+
+  /* Radii */
+  --radius-sm: 6px;
+  --radius: 10px;
+  --radius-lg: 16px;
+  --radius-full: 9999px;
 }
 
 /* ─── Base Styles ─────────────────────────────────────────────────────────── */
@@ -39,8 +79,8 @@ body {
 
 /* ─── Scrollbar ───────────────────────────────────────────────────────────── */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
 }
 
 ::-webkit-scrollbar-track {
@@ -48,7 +88,7 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--border);
+  background: var(--border-strong);
   border-radius: 3px;
 }
 
@@ -79,8 +119,8 @@ body {
 }
 
 @keyframes pulse-glow {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4); }
-  50% { box-shadow: 0 0 0 8px rgba(59, 130, 246, 0); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.25); }
+  50% { box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); }
 }
 
 @keyframes spin {
@@ -114,7 +154,7 @@ body {
   }
 
   .animate-shimmer {
-    background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.05) 50%, transparent 100%);
+    background: linear-gradient(90deg, transparent 0%, rgba(0,0,0,0.04) 50%, transparent 100%);
     background-size: 200% 100%;
     animation: shimmer 2s infinite;
   }
@@ -122,10 +162,11 @@ body {
   .glass {
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
+    background: rgba(255,255,255,0.85);
   }
 
   .gradient-text {
-    background: linear-gradient(135deg, var(--blue) 0%, var(--purple) 100%);
+    background: linear-gradient(135deg, var(--red) 0%, var(--blue) 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
