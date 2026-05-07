@@ -368,7 +368,7 @@ export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
 
               {/* Site selector */}
               {loadingSites ? (
-                <div className="text-muted text-sm flex items-center gap-2"><LoadingSpinner size={14} /> Loading your GSC properties…</div>
+                <div className="text-muted text-sm flex items-center gap-2"><LoadingSpinner /> Loading your GSC properties…</div>
               ) : gscSites.length > 0 ? (
                 <div>
                   <label className="text-muted text-xs mb-1.5 block">📍 Select GSC Property</label>
