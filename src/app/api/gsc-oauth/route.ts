@@ -153,8 +153,16 @@ export async function POST(req: NextRequest) {
       await updateStoredToken(email, accessToken, expiresAt);
     }
 
-    // Strip trailing slash to avoid double-slash in API URL
-    const cleanSiteUrl = (siteUrl || "").replace(/\/$/, "");
+    // Normalize site URL: GSC API only accepts https:// or sc-domain: format
+    const rawUrl = (siteUrl || "").replace(/\/$/, "").trim();
+    let cleanSiteUrl = rawUrl;
+
+    if (rawUrl.startsWith("http://")) {
+      cleanSiteUrl = rawUrl.replace("http://", "https://");
+    } else if (!rawUrl.startsWith("https://") && !rawUrl.startsWith("sc-domain:")) {
+      // Bare domain — assume https
+      cleanSiteUrl = `https://${rawUrl}`;
+    }
 
     // Build optional dimension filters (GSC uses AND logic within a group)
     const gscBody: Record<string, unknown> = {
@@ -196,6 +204,16 @@ export async function POST(req: NextRequest) {
         return NextResponse.json(
           { error: "Google account access expired. Please reconnect." },
           { status: 401 }
+        );
+      }
+
+      if (gscResp.status === 403) {
+        return NextResponse.json(
+          {
+            error: `Permission denied for "${cleanSiteUrl}". Your Google account doesn't have owner or editor access to this site in GSC. You need to: (1) verify the site in Google Search Console, (2) get added as Owner/Editor in GSC settings, or (3) use a Google account that already has access.`,
+            code: "GSC_PERMISSION_DENIED",
+          },
+          { status: 403 }
         );
       }
 
