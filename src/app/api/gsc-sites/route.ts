@@ -103,7 +103,9 @@ export async function GET(req: NextRequest) {
     }
 
     const data = await gscResp.json();
-    const sites = (data.site || []).map((s: { siteUrl: string; permissionLevel: string }) => ({
+    // GSC Sites API returns { siteEntry: [{ siteUrl, permissionLevel }, ...] }
+    const siteEntry: { siteUrl: string; permissionLevel: string }[] = data.siteEntry || data.site || [];
+    const sites = siteEntry.map((s) => ({
       url: s.siteUrl,
       permission: s.permissionLevel,
     }));
