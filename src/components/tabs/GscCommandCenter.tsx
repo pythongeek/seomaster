@@ -733,18 +733,41 @@ export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
             </Section>
           ) : null}
 
-          {result.pageHealth?.length ? (
+{result.pageHealth?.length ? (
             <Section title="🏥 Page Health Scores" accent="purple">
+              {/* Explanation banner */}
+              <div className="mb-4 bg-purple/5 border border-purple/20 rounded-xl px-4 py-3">
+                <div className="text-sm font-semibold text-text mb-1">📊 How grades are calculated</div>
+                <div className="text-xs text-slate-600 leading-relaxed">
+                  Each URL gets a score (0–100) based on 6 factors summed together:{" "}
+                  <span className="text-purple font-semibold">Position score</span> (avg ranking, max 30pts) +
+                  <span className="text-purple font-semibold"> CTR score</span> (avg CTR vs benchmark, max 20pts) +
+                  <span className="text-purple font-semibold"> Coverage</span> (% of queries in top 10, max 18pts) +
+                  <span className="text-purple font-semibold"> Zero-click penalty</span> (queries with impressions but no clicks, max 15pts) +
+                  <span className="text-purple font-semibold"> Efficiency</span> (how often CTR meets benchmark, max 15pts) +
+                  <span className="text-purple font-semibold"> Top position bonus</span> (queries ranking 1–3, max 8pts).
+                  <span className="font-semibold text-text"> A = 90–100, B = 75–89, C = 60–74, D = 40–59, F = 0–39.</span>
+                </div>
+              </div>
+
               <DataTable
                 columns={[
                   { key: "url", label: "URL", render: (v) => <span className="text-slate-600 truncate max-w-[200px] block">{String(v).replace(/^https?:\/\/[^/]+/, "") || "/"}</span> },
                   { key: "healthGrade", label: "Grade", render: (v) => { const gc: Record<string, string> = { A: "green", B: "blue", C: "amber", D: "red", F: "red" }; return <Badge variant={(gc[String(v)] || "muted") as "green"}>{String(v)}</Badge>; } },
+                  { key: "healthScore", label: "Score", render: (v) => <span className="font-mono font-bold text-sm">{Number(v)}</span> },
                   { key: "totalClicks", label: "Clicks", render: (v) => <span>{Number(v).toLocaleString()}</span> },
                   { key: "avgCTR", label: "CTR", render: (v) => <span>{Number(v).toFixed(2)}%</span> },
-                  { key: "avgPosition", label: "Pos" },
+                  { key: "avgPosition", label: "Avg Pos", render: (v) => <span className="font-mono">{Number(v).toFixed(1)}</span> },
                   { key: "potentialClicksGain", label: "+Clicks", render: (v) => <span className="text-green">+{Number(v).toLocaleString()}</span> },
+                  { key: "issues", label: "Why this score?", render: (v: unknown) => {
+                    const issues = v as string[];
+                    if (!issues?.length) return <span className="text-green text-xs">✓ All metrics healthy</span>;
+                    return <span className="text-red text-xs">{issues.slice(0, 2).join(" · ")}</span>;
+                  }},
                 ]}
-                rows={result.pageHealth as unknown as Record<string, unknown>[]} maxRows={15} totalRows={result.pageHealth.length}
+                rows={result.pageHealth as unknown as Record<string, unknown>[]}
+                maxRows={15}
+                totalRows={result.pageHealth.length}
               />
             </Section>
           ) : null}
