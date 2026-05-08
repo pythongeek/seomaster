@@ -182,6 +182,7 @@ The plan should match the category (e.g., cannibalization = redirects, CTR = tit
     return NextResponse.json({ result: result.data });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
+    console.error("[/api/ai-content-plan]", err);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
