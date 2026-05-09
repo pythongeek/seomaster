@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
+import { ExpertiseProvider } from "@/store/expertise-context";
 import "./globals.css";
 
 const inter = Inter({
@@ -9,8 +10,8 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "SEOMaster - AI-Powered SEO Analytics",
-  description: "GSC Command Center, CTR Lab, and AI-driven SEO insights powered by MiniMax M2.7",
+  title: "SEOMaster Premium — AI-Powered SEO Analytics",
+  description: "GSC Command Center, opportunity engine, health score, and AI-driven SEO insights powered by MiniMax M2.7 and Gemini",
 };
 
 export default function RootLayout({
@@ -20,7 +21,11 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className={inter.variable}>
-      <body className="font-sans antialiased">{children}</body>
+      <body className="font-sans antialiased">
+        <ExpertiseProvider>
+          {children}
+        </ExpertiseProvider>
+      </body>
     </html>
   );
 }

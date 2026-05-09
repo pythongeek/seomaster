@@ -148,3 +148,65 @@ export const GEOMatrixSchema = z.object({
   ),
   rules: z.array(z.string()),
 });
+
+// ─── Premium: Action Plan ────────────────────────────────────────────────────
+export const ActionPlanSchema = z.object({
+  query: z.string(),
+  page: z.string(),
+  actionType: z.string(),
+  summary: z.string().describe('1-2 sentence explanation of why this action is the top priority'),
+  steps: z.array(
+    z.object({
+      stepNumber: z.number(),
+      title: z.string(),
+      description: z.string().describe('Detailed, actionable instruction — be specific, not generic'),
+      timeEstimate: z.string().describe('e.g. "15 min", "2 hr"'),
+      expectedLift: z.string().describe('e.g. "+2% CTR lift", "+3 position improvement"'),
+    })
+  ).min(1).max(6),
+  estimatedGain: z.string().describe('e.g. "+45 clicks/month"'),
+  timeToValue: z.string().describe('e.g. "2-4 weeks"'),
+  whyThisMatters: z.string().describe('1 sentence connecting this action to business value'),
+});
+
+// ─── Premium: Title Variants ─────────────────────────────────────────────────
+export const TitleVariantsSchema = z.object({
+  query: z.string(),
+  currentTitle: z.string(),
+  variants: z.array(
+    z.object({
+      title: z.string().max(70).describe('The new title tag — must include the primary keyword'),
+      predictedLiftPercent: z.number().min(0).max(50).describe('Estimated CTR improvement in percentage points'),
+      type: z.string().describe('e.g. "power_word", "number_led", "year", "emotional", "comparison"'),
+      powerWords: z.array(z.string()).describe('Key words that drive CTR in this variant'),
+      reasoning: z.string().describe('Brief explanation of why this variant improves CTR'),
+    })
+  ).min(3).max(5),
+  metaVariants: z.array(
+    z.object({
+      text: z.string().max(160),
+      type: z.string(),
+      cta: z.string().describe('The call-to-action hook'),
+    })
+  ).min(2).max(3),
+});
+
+// ─── Premium: Content Brief ───────────────────────────────────────────────────
+export const ContentBriefSchema = z.object({
+  query: z.string(),
+  h1: z.string().describe('Recommended H1 — keyword-rich, benefit-led'),
+  targetWordCount: z.number().min(500).max(5000),
+  contentAngle: z.string().describe('Unique angle to differentiate from competitors'),
+  recommendedSchema: z.string().describe('e.g. "HowTo", "FAQ", "Article", "Dataset"'),
+  outline: z.array(
+    z.object({
+      h2: z.string(),
+      h3s: z.array(z.string()).describe('Sub-sections under this H2'),
+      notes: z.string().describe('Content notes, data points, or angles for this section'),
+    })
+  ).min(3).max(10),
+  internalLinks: z.array(z.string()).describe('Suggested internal link anchor texts (not URLs)'),
+  competitorGaps: z.array(z.string()).describe('Topics competitors cover that you should include'),
+  callToAction: z.string().describe('What should the reader do after reading this content?'),
+});
+
