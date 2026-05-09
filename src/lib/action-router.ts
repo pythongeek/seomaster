@@ -17,6 +17,10 @@
 import type { TrendResult } from './trend-analyser';
 import type { OpportunityScore, ActionType, EffortLevel } from './opportunity-scorer';
 
+// Re-export so callers can import ActionType from either module
+export type { ActionType, EffortLevel } from './opportunity-scorer';
+
+
 export interface ActionResult {
   actionType: ActionType;
   priority: 1 | 2 | 3 | 4 | 5 | 10;

@@ -5,6 +5,7 @@ import { getDynamicBenchmark, getGenericBenchmark } from '@/lib/serp-engine';
 import { scoreOpportunity } from '@/lib/opportunity-scorer';
 import { scoreAIOverviewRisk } from '@/lib/ai-overview-risk';
 import { routeAction } from '@/lib/action-router';
+import type { ActionType } from '@/lib/action-router';
 import { computeHealthScore } from '@/lib/health-score';
 import { analyseTrend, buildPositionSeries } from '@/lib/trend-analyser';
 import { runResolutionDiff } from '@/lib/progress-engine';
@@ -1097,7 +1098,7 @@ ${pageHealth.slice(-5).map(p => `URL: ${p.url.split('/').pop()} | Grade: ${p.hea
               siteId: o.siteId ?? 0,
               query: o.query,
               page: o.page,
-              actionType: o.actionType as import('@/lib/action-router').ActionType,
+              actionType: o.actionType as ActionType,
               score: o.score,
               estimatedGain: o.estimatedGain ?? 0,
               priority: o.priority,
