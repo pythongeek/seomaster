@@ -340,3 +340,163 @@ export interface SitemapResult {
   pingMessage: string;
   pingedAt: string | null;
 }
+
+// ─── Premium Types ──────────────────────────────────────────────────────────────────
+
+export type ExpertiseLevel = 'beginner' | 'intermediate' | 'expert';
+
+export type ActionType =
+  | 'cannibalization_fix'
+  | 'ai_overview_pivot'
+  | 'snippet_rewrite'
+  | 'declining_near_p1'
+  | 'technical_review'
+  | 'quick_win_content'
+  | 'content_creation'
+  | 'monitor';
+
+export type EffortLevel = 'low' | 'medium' | 'high';
+
+export interface ActionStep {
+  stepNumber: number;
+  title: string;
+  description: string;
+  timeEstimate: string;
+  expectedLift: string;
+}
+
+export interface ActionPlan {
+  actionType: ActionType;
+  priority: 1 | 2 | 3 | 4 | 5 | 10;
+  effort: EffortLevel;
+  estimatedGain: number;
+  effortLabel: string;
+  steps: ActionStep[];
+}
+
+export interface OpportunityItem {
+  id?: number;
+  query: string;
+  page: string;
+  position: number;
+  ctr: number;
+  impressions: number;
+  clicks: number;
+  score: number;               // 0–100 composite
+  priority: number;
+  effort: EffortLevel;
+  estimatedGain: number;       // clicks/month
+  actionType: ActionType;
+  actionPlan?: ActionPlan;
+  aiRisk?: number;             // 0–100
+  status: 'open' | 'in_progress' | 'resolved' | 'dismissed';
+  components?: {
+    A_traffic: number;
+    B_ctrGap: number;
+    C_effort: number;
+    D_trend: number;
+  };
+}
+
+export interface TrendResult {
+  slope: number;
+  intercept: number;
+  r2: number;
+  pValue: number;
+  momentum: number;
+  volatility: 'stable' | 'unstable' | 'volatile';
+  direction: 'strong_rise' | 'moderate_rise' | 'stable' | 'moderate_fall' | 'strong_fall';
+  seasonalFlag: boolean;
+  forecastedPosition: number;
+  cv: number;
+  dataPoints: number;
+}
+
+export interface AIOverviewRiskResult {
+  riskScore: number;
+  riskTier: 'standard' | 'featured_snippet_target' | 'data_pivot' | 'deprioritize';
+  signals: string[];
+  signalBreakdown: {
+    ctrSuppression: number;
+    intentPenalty: number;
+    trendDecline: number;
+    questionPattern: number;
+    impressionVolume: number;
+  };
+  counterStrategy: string;
+  geminiCheckRecommended: boolean;
+}
+
+export interface HealthDimension {
+  name: string;
+  weight: number;
+  score: number;
+  label: string;
+}
+
+export interface HealthScoreResult {
+  overallScore: number;
+  dimensions: HealthDimension[];
+  weeklyDelta: number | null;
+  trend: '↑ Rising' | '→ Stable' | '↓ Declining';
+  grade: 'A' | 'B' | 'C' | 'D' | 'F';
+  totalOpportunities: number;
+  resolvedThisWeek: number;
+  estimatedMonthlyGain: number;
+}
+
+export interface ClusterResult {
+  clusterId: number;
+  label: string;
+  queries: string[];
+  pages: string[];
+  pillarPage: string | null;
+  orphanPages: string[];
+  health: number;
+  totalImpressions: number;
+  totalClicks: number;
+  avgPosition: number;
+  avgCTR: number;
+  gaps: string[];
+}
+
+export interface ProgressRecord {
+  opportunityId: number;
+  query: string;
+  actionType: ActionType;
+  shouldResolve: boolean;
+  reason: string;
+  method: 'auto_detected' | 'manually_marked';
+}
+
+export interface ContentBrief {
+  h1: string;
+  targetWordCount: number;
+  contentAngle: string;
+  recommendedSchema: string;
+  outline: Array<{
+    h2: string;
+    h3s: string[];
+    notes: string;
+  }>;
+  internalLinks: string[];
+  competitorGaps: string[];
+}
+
+export interface TitleVariant {
+  title: string;
+  predictedLiftPercent: number;
+  powerWords: string[];
+  type: string;
+}
+
+export interface AIActionPlanResponse {
+  query: string;
+  page: string;
+  actionType: ActionType;
+  summary: string;
+  steps: ActionStep[];
+  estimatedGain: string;
+  timeToValue: string;
+}
+

@@ -2,6 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { callAIValidated } from '@/lib/ai-client';
 import { AISynthesisSchema } from '@/lib/ai-schemas';
 import { getDynamicBenchmark, getGenericBenchmark } from '@/lib/serp-engine';
+import { scoreOpportunity } from '@/lib/opportunity-scorer';
+import { scoreAIOverviewRisk } from '@/lib/ai-overview-risk';
+import { routeAction } from '@/lib/action-router';
+import { computeHealthScore } from '@/lib/health-score';
+import { analyseTrend, buildPositionSeries } from '@/lib/trend-analyser';
+import { runResolutionDiff } from '@/lib/progress-engine';
+import { upsertOpportunity, getOpenOpportunities, markOpportunityResolved, saveHealthSnapshot, getLatestHealthScore, getOrCreateSite, updateSiteHealthScore, initPremiumTables } from '@/db/queries';
+import type { TrendResult } from '@/lib/trend-analyser';
 
 export const runtime = 'nodejs';
 
@@ -980,6 +988,182 @@ ${pageHealth.slice(-5).map(p => `URL: ${p.url.split('/').pop()} | Grade: ${p.hea
         analysisMode: aiSynthesis ? 'hybrid' : 'rule-based',
       },
     };
+
+    // ─── Premium Pipeline — non-blocking ─────────────────────────────────────
+    // Run opportunity scoring, health score, DB persistence in background.
+    // Does not block the response.
+    const siteUrl = options?.siteUrl || 'unknown';
+    (async () => {
+      try {
+        await initPremiumTables();
+        await getOrCreateSite(siteUrl);
+
+        // 1. Build position time series per query (for trend analysis)
+        const trendMap = new Map<string, TrendResult>();
+        const queryGroups = new Map<string, typeof rows>();
+        for (const r of rows) {
+          const arr = queryGroups.get(r.query) ?? [];
+          arr.push(r);
+          queryGroups.set(r.query, arr);
+        }
+        for (const [query, qRows] of queryGroups) {
+          if (qRows.length >= 3) {
+            const series = buildPositionSeries(qRows.map(r => ({ ...r, data_date: r.data_date })), query);
+            if (series.length >= 3) trendMap.set(query, analyseTrend(series));
+          }
+        }
+
+        // 2. Score AI Overview risk for top-impression rows
+        const topRows = [...withCannibal].sort((a, b) => b.impressions - a.impressions).slice(0, 50);
+        const aiRiskMap = new Map<string, number>();
+        for (const r of topRows) {
+          const trend = trendMap.get(r.query);
+          const risk = scoreAIOverviewRisk({
+            query: r.query,
+            position: r.position,
+            ctr: r.ctr,
+            impressions: r.impressions,
+            intent: r.intent.intent,
+          }, trend ? { slope: trend.slope, pValue: trend.pValue } : undefined);
+          aiRiskMap.set(r.query + '|' + r.page, risk.riskScore);
+        }
+
+        const globalMax = Math.max(...rows.map(r => r.impressions), 1000);
+
+        // 3. Score opportunities and route actions for high-score rows
+        const topOpps = [...withCannibal]
+          .sort((a, b) => b.priorityScore - a.priorityScore)
+          .slice(0, 25);
+
+        const savedOpps: Array<{ id: number; query: string; page: string; score: number; actionType: string }> = [];
+        for (const r of topOpps) {
+          const trend = trendMap.get(r.query);
+          const aiRisk = aiRiskMap.get(r.query + '|' + r.page) ?? 0;
+
+          const oppScore = scoreOpportunity({
+            query: r.query,
+            page: r.page,
+            position: r.position,
+            ctr: r.ctr,
+            impressions: r.impressions,
+            clicks: r.clicks,
+            device: 'desktop',
+            intent: r.intent.intent,
+            aiOverviewRisk: aiRisk,
+            hasCannibalisation: r.isCannibalized,
+          }, trend, globalMax);
+
+          const action = routeAction({
+            query: r.query,
+            position: r.position,
+            ctr: r.ctr,
+            impressions: r.impressions,
+            hasCannibalisation: r.isCannibalized,
+            cannibalisationPages: r.cannibalPages,
+            aiOverviewRisk: aiRisk,
+            ctrGap: -(r.ctrGap), // flip sign: positive gap = underperforming
+          }, trend ?? { momentum: 0, volatility: 'stable' }, oppScore);
+
+          const saved = await upsertOpportunity({
+            siteUrl,
+            query: r.query,
+            page: r.page,
+            actionType: action.actionType,
+            score: oppScore.score,
+            priority: action.priority,
+            effort: action.effort,
+            estimatedGain: oppScore.estimatedMonthlyGain,
+            actionPlan: action,
+            aiRisk,
+          });
+          if (saved) savedOpps.push({ id: saved.id, query: r.query, page: r.page, score: oppScore.score, actionType: action.actionType });
+        }
+
+        // 4. Run auto-resolution diff on existing open opportunities
+        const openOpps = await getOpenOpportunities(siteUrl, 50);
+        if (openOpps.length > 0) {
+          const currentData = withCannibal.map(r => ({
+            query: r.query,
+            page: r.page,
+            ctr: r.ctr,
+            position: r.position,
+            impressions: r.impressions,
+            ctrGap: -(r.ctrGap),
+          }));
+
+          const resolutions = runResolutionDiff(
+            openOpps.map(o => ({
+              id: o.id,
+              siteId: o.siteId ?? 0,
+              query: o.query,
+              page: o.page,
+              actionType: o.actionType as import('@/lib/action-router').ActionType,
+              score: o.score,
+              estimatedGain: o.estimatedGain ?? 0,
+              priority: o.priority,
+              effort: o.effort,
+              actionPlan: o.actionPlan,
+              status: o.status as 'open',
+              createdAt: o.createdAt ?? new Date(),
+            })),
+            currentData,
+            trendMap,
+          );
+
+          const resolved = resolutions.filter(r => r.shouldResolve);
+          for (const r of resolved) {
+            await markOpportunityResolved(r.opportunityId, r.reason);
+          }
+        }
+
+        // 5. Compute and save health score
+        const aiRiskItems = topRows.map(r => {
+          const trend = trendMap.get(r.query);
+          return scoreAIOverviewRisk({
+            query: r.query,
+            position: r.position,
+            ctr: r.ctr,
+            impressions: r.impressions,
+            intent: r.intent.intent,
+          }, trend ? { slope: trend.slope, pValue: trend.pValue } : undefined);
+        });
+
+        const previousScore = await getLatestHealthScore(siteUrl);
+        const healthResult = computeHealthScore({
+          rows: withCannibal.map(r => ({
+            ctr: r.ctr,
+            benchmarkCTR: r.benchmarkCTR,
+            clicks: r.clicks,
+            impressions: r.impressions,
+          })),
+          trends: Array.from(trendMap.values()),
+          cannibalizationConflicts: cannibalGroups.length,
+          aiOverviewItems: aiRiskItems,
+          previousScore: previousScore ?? undefined,
+          totalOpportunities: savedOpps.length,
+          resolvedThisWeek: openOpps.filter(o => o.status === 'resolved').length,
+          estimatedMonthlyGain: savedOpps.reduce((s, o) => s + (topOpps.find(r => r.query === o.query)?.impressions ?? 0), 0),
+        });
+
+        await saveHealthSnapshot({
+          siteUrl,
+          overallScore: healthResult.overallScore,
+          ctrPerformance: healthResult.dimensions.find(d => d.name === 'CTR Performance')?.score ?? null,
+          positionTrends: healthResult.dimensions.find(d => d.name === 'Position Trends')?.score ?? null,
+          cannibalization: healthResult.dimensions.find(d => d.name === 'Cannibalization')?.score ?? null,
+          aiOverviewRisk: healthResult.dimensions.find(d => d.name === 'AI Overview Risk')?.score ?? null,
+          contentCoverage: healthResult.dimensions.find(d => d.name === 'Content Coverage')?.score ?? null,
+          weeklyDelta: healthResult.weeklyDelta,
+          totalOpportunities: savedOpps.length,
+          resolvedThisWeek: healthResult.resolvedThisWeek,
+          estimatedMonthlyGain: healthResult.estimatedMonthlyGain,
+        });
+
+        await updateSiteHealthScore(siteUrl, healthResult.overallScore);
+      } catch (premiumErr) {
+        console.warn('[Premium pipeline error — non-critical]', premiumErr);
+      }
+    })(); // fire and forget
 
     return NextResponse.json({ result });
   } catch (err) {

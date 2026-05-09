@@ -1,6 +1,6 @@
-import { eq, desc, sql as rawSql } from "drizzle-orm";
+import { eq, desc, sql as rawSql, and } from "drizzle-orm";
 import { db, schema } from "./index";
-const { seoReports, gscSnapshots, keywordClusters, seoJobs, serpIntelligence } = schema;
+const { seoReports, gscSnapshots, keywordClusters, seoJobs, serpIntelligence, opportunities, healthHistory, sites } = schema;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // INIT — create tables if they don't exist (backwards compat with old initDB)
@@ -319,3 +319,290 @@ export async function checkConnection(): Promise<boolean> {
     return true;
   } catch { return false; }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// OPPORTUNITIES
+// ─────────────────────────────────────────────────────────────────────────────
+
+type OpportunityInsert = {
+  siteUrl: string;
+  siteId?: number | null;
+  query: string;
+  page: string;
+  actionType: string;
+  score: number;
+  priority: number;
+  effort: string;
+  estimatedGain?: number;
+  actionPlan?: unknown;
+  aiRisk?: number | null;
+  snapshotId?: number | null;
+};
+
+export async function upsertOpportunity(data: OpportunityInsert) {
+  if (!db) return null;
+  try {
+    // Check if an open opportunity for this query+page+actionType exists
+    const existing = await db.select()
+      .from(opportunities)
+      .where(
+        and(
+          eq(opportunities.siteUrl, data.siteUrl),
+          eq(opportunities.query, data.query),
+          eq(opportunities.page, data.page),
+          eq(opportunities.actionType, data.actionType),
+          eq(opportunities.status, 'open'),
+        ),
+      )
+      .limit(1);
+
+    if (existing.length > 0) {
+      // Update score + gain for existing opportunity
+      const [row] = await db.update(opportunities)
+        .set({
+          score: data.score,
+          estimatedGain: data.estimatedGain ?? 0,
+          actionPlan: data.actionPlan ?? null,
+          aiRisk: data.aiRisk ?? null,
+          updatedAt: new Date(),
+        })
+        .where(eq(opportunities.id, existing[0].id))
+        .returning({ id: opportunities.id });
+      return row;
+    }
+
+    // Insert new opportunity
+    const [row] = await db.insert(opportunities).values({
+      siteUrl: data.siteUrl,
+      siteId: data.siteId ?? null,
+      query: data.query,
+      page: data.page,
+      actionType: data.actionType,
+      score: data.score,
+      priority: data.priority,
+      effort: data.effort,
+      estimatedGain: data.estimatedGain ?? 0,
+      actionPlan: data.actionPlan ?? null,
+      aiRisk: data.aiRisk ?? null,
+      snapshotId: data.snapshotId ?? null,
+      status: 'open',
+    }).returning({ id: opportunities.id });
+    return row;
+  } catch (e) {
+    console.error('[upsertOpportunity error]', e);
+    return null;
+  }
+}
+
+export async function getOpenOpportunities(siteUrl: string, limit = 25) {
+  if (!db) return [];
+  try {
+    return db.select()
+      .from(opportunities)
+      .where(and(eq(opportunities.siteUrl, siteUrl), eq(opportunities.status, 'open')))
+      .orderBy(desc(opportunities.score))
+      .limit(limit);
+  } catch { return []; }
+}
+
+export async function getAllOpportunities(siteUrl: string, limit = 100) {
+  if (!db) return [];
+  try {
+    return db.select()
+      .from(opportunities)
+      .where(eq(opportunities.siteUrl, siteUrl))
+      .orderBy(desc(opportunities.score))
+      .limit(limit);
+  } catch { return []; }
+}
+
+export async function markOpportunityResolved(id: number, reason: string) {
+  if (!db) return false;
+  try {
+    await db.update(opportunities)
+      .set({ status: 'resolved', resolvedAt: new Date(), resolvedReason: reason, updatedAt: new Date() })
+      .where(eq(opportunities.id, id));
+    return true;
+  } catch { return false; }
+}
+
+export async function markOpportunityStatus(id: number, status: 'open' | 'in_progress' | 'resolved' | 'dismissed') {
+  if (!db) return false;
+  try {
+    await db.update(opportunities)
+      .set({ status, updatedAt: new Date() })
+      .where(eq(opportunities.id, id));
+    return true;
+  } catch { return false; }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HEALTH HISTORY
+// ─────────────────────────────────────────────────────────────────────────────
+
+type HealthHistoryInsert = {
+  siteUrl: string;
+  siteId?: number | null;
+  overallScore: number;
+  ctrPerformance?: number | null;
+  positionTrends?: number | null;
+  cannibalization?: number | null;
+  aiOverviewRisk?: number | null;
+  contentCoverage?: number | null;
+  cwvScore?: number | null;
+  weeklyDelta?: number | null;
+  totalOpportunities?: number;
+  resolvedThisWeek?: number;
+  estimatedMonthlyGain?: number;
+  snapshotId?: number | null;
+};
+
+export async function saveHealthSnapshot(data: HealthHistoryInsert) {
+  if (!db) return null;
+  try {
+    const [row] = await db.insert(healthHistory).values({
+      siteUrl: data.siteUrl,
+      siteId: data.siteId ?? null,
+      overallScore: data.overallScore,
+      ctrPerformance: data.ctrPerformance ?? null,
+      positionTrends: data.positionTrends ?? null,
+      cannibalization: data.cannibalization ?? null,
+      aiOverviewRisk: data.aiOverviewRisk ?? null,
+      contentCoverage: data.contentCoverage ?? null,
+      cwvScore: data.cwvScore ?? null,
+      weeklyDelta: data.weeklyDelta ?? null,
+      totalOpportunities: data.totalOpportunities ?? 0,
+      resolvedThisWeek: data.resolvedThisWeek ?? 0,
+      estimatedMonthlyGain: data.estimatedMonthlyGain ?? 0,
+      snapshotId: data.snapshotId ?? null,
+    }).returning({ id: healthHistory.id, recordedAt: healthHistory.recordedAt });
+    return row;
+  } catch (e) {
+    console.error('[saveHealthSnapshot error]', e);
+    return null;
+  }
+}
+
+export async function getHealthHistory(siteUrl: string, limit = 12) {
+  if (!db) return [];
+  try {
+    return db.select()
+      .from(healthHistory)
+      .where(eq(healthHistory.siteUrl, siteUrl))
+      .orderBy(desc(healthHistory.recordedAt))
+      .limit(limit);
+  } catch { return []; }
+}
+
+export async function getLatestHealthScore(siteUrl: string): Promise<number | null> {
+  if (!db) return null;
+  try {
+    const rows = await db.select({ score: healthHistory.overallScore })
+      .from(healthHistory)
+      .where(eq(healthHistory.siteUrl, siteUrl))
+      .orderBy(desc(healthHistory.recordedAt))
+      .limit(1);
+    return rows[0]?.score ?? null;
+  } catch { return null; }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SITES
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function getOrCreateSite(siteUrl: string, displayName?: string) {
+  if (!db) return null;
+  try {
+    const existing = await db.select()
+      .from(sites)
+      .where(eq(sites.siteUrl, siteUrl))
+      .limit(1);
+    if (existing.length > 0) return existing[0];
+
+    const [row] = await db.insert(sites).values({
+      siteUrl,
+      displayName: displayName ?? siteUrl,
+      isPrimary: false,
+    }).returning();
+    return row;
+  } catch { return null; }
+}
+
+export async function updateSiteHealthScore(siteUrl: string, score: number) {
+  if (!db) return;
+  try {
+    await db.update(sites)
+      .set({ healthScore: score, lastAnalysedAt: new Date(), updatedAt: new Date() })
+      .where(eq(sites.siteUrl, siteUrl));
+  } catch { /* non-critical */ }
+}
+
+export async function getAllSites() {
+  if (!db) return [];
+  try {
+    return db.select().from(sites).orderBy(desc(sites.lastAnalysedAt));
+  } catch { return []; }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PREMIUM INIT — add new tables via raw SQL (idempotent)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function initPremiumTables() {
+  if (!db) return;
+  const execute = (sql: TemplateStringsArray, ...values: unknown[]) =>
+    (db as ReturnType<typeof import("drizzle-orm/neon-http").drizzle>).execute(rawSql(sql, ...values));
+  try {
+    await execute`CREATE TABLE IF NOT EXISTS sites (
+      id SERIAL PRIMARY KEY,
+      site_url TEXT NOT NULL,
+      display_name TEXT,
+      is_primary BOOLEAN DEFAULT FALSE,
+      last_analysed_at TIMESTAMP,
+      health_score INTEGER,
+      created_at TIMESTAMP DEFAULT NOW(),
+      updated_at TIMESTAMP DEFAULT NOW()
+    )`;
+    await execute`CREATE TABLE IF NOT EXISTS opportunities (
+      id SERIAL PRIMARY KEY,
+      site_id INTEGER,
+      site_url TEXT NOT NULL,
+      query TEXT NOT NULL,
+      page TEXT NOT NULL,
+      action_type TEXT NOT NULL,
+      score INTEGER NOT NULL,
+      priority INTEGER NOT NULL,
+      effort TEXT NOT NULL,
+      estimated_gain INTEGER DEFAULT 0,
+      action_plan JSONB,
+      status TEXT DEFAULT 'open' NOT NULL,
+      ai_risk INTEGER,
+      resolved_at TIMESTAMP,
+      resolved_reason TEXT,
+      snapshot_id INTEGER,
+      created_at TIMESTAMP DEFAULT NOW(),
+      updated_at TIMESTAMP DEFAULT NOW()
+    )`;
+    await execute`CREATE TABLE IF NOT EXISTS health_history (
+      id SERIAL PRIMARY KEY,
+      site_url TEXT NOT NULL,
+      site_id INTEGER,
+      overall_score INTEGER NOT NULL,
+      ctr_performance INTEGER,
+      position_trends INTEGER,
+      cannibalization INTEGER,
+      ai_overview_risk INTEGER,
+      content_coverage INTEGER,
+      cwv_score INTEGER,
+      weekly_delta INTEGER,
+      total_opportunities INTEGER DEFAULT 0,
+      resolved_this_week INTEGER DEFAULT 0,
+      estimated_monthly_gain INTEGER DEFAULT 0,
+      snapshot_id INTEGER,
+      recorded_at TIMESTAMP DEFAULT NOW()
+    )`;
+  } catch (e) {
+    console.warn('[initPremiumTables warning]', e);
+  }
+}
+
