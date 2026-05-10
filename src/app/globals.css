@@ -4,14 +4,14 @@
 
 /* ─── Design Tokens ───────────────────────────────────────────────────────── */
 :root {
-  /* Light theme — white bg, vibrant red/green indicators */
-  --bg: #FFFFFF;
-  --surface: #F8F9FA;
-  --card: #FFFFFF;
-  --card-hover: #F1F5F9;
-  --border: #E2E8F0;
-  --border-subtle: #F1F5F9;
-  --border-strong: #CBD5E1;
+  /* Dark theme — premium analytics look */
+  --bg: #0F172A;
+  --surface: #1E293B;
+  --card: #1E293B;
+  --card-hover: #334155;
+  --border: #334155;
+  --border-subtle: #1E293B;
+  --border-strong: #475569;
 
   /* Primary accent — vibrant red (primary actions, alerts) */
   --red: #EF4444;
@@ -41,10 +41,10 @@
   --cyan-light: #CFFAFE;
 
   /* Text */
-  --text: #0F172A;
-  --text-secondary: #334155;
+  --text: #F8FAFC;
+  --text-secondary: #CBD5E1;
   --muted: #94A3B8;
-  --muted-light: #CBD5E1;
+  --muted-light: #475569;
 
   /* Positive/Negative status */
   --positive: #22C55E;

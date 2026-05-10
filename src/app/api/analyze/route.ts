@@ -11,6 +11,7 @@ import { analyseTrend, buildPositionSeries } from '@/lib/trend-analyser';
 import { runResolutionDiff } from '@/lib/progress-engine';
 import { upsertOpportunity, getOpenOpportunities, markOpportunityResolved, saveHealthSnapshot, getLatestHealthScore, getOrCreateSite, updateSiteHealthScore, initPremiumTables } from '@/db/queries';
 import type { TrendResult } from '@/lib/trend-analyser';
+import { buildTopicClusters } from '@/lib/topic-clusters';
 
 export const runtime = 'nodejs';
 
@@ -79,6 +80,7 @@ interface AnalysisResult {
   priorityMatrix: PriorityItem[];
   competitiveGaps: CompetitiveGap[];
   recommendations: string[];
+  clusters: any[];
   aiSynthesis?: Record<string, unknown>;
   metadata: Record<string, unknown>;
 }
@@ -860,6 +862,7 @@ export async function POST(req: NextRequest) {
     const competitiveGaps = findCompetitiveGaps(withCannibal);
     const priorityMatrix = buildPriorityMatrix(withCannibal, cannibalGroups);
     const pageHealth = scorePageHealth(enriched);
+    const clusters = buildTopicClusters(withCannibal);
 
     // ─── Intent breakdown ───────────────────────────────────────────────
     const intentCounts: Record<string, number> = { informational: 0, transactional: 0, navigational: 0, commercial: 0, local: 0 };
@@ -979,6 +982,7 @@ ${pageHealth.slice(-5).map(p => `URL: ${p.url.split('/').pop()} | Grade: ${p.hea
       aiOverviewCandidates,
       priorityMatrix,
       competitiveGaps,
+      clusters,
       recommendations,
       aiSynthesis,
       metadata: {

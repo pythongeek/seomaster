@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { ActionPlanCard } from '@/components/ui/ActionPlanCard';
 import { ProgressTracker } from '@/components/ui/ProgressTracker';
 import { CtrBeforeAfter } from '@/components/ui/CtrBeforeAfter';
@@ -32,12 +32,32 @@ interface Props {
 type SortKey = 'score' | 'gain' | 'position';
 type FilterStatus = 'open' | 'all';
 
-export function OpportunityQueue({ opportunities, siteUrl, onRefresh }: Props) {
+export function OpportunityQueue({ siteUrl, onRefresh }: Omit<Props, 'opportunities'> & { opportunities?: Opportunity[] }) {
   const [sort, setSort] = useState<SortKey>('score');
   const [filter, setFilter] = useState<FilterStatus>('open');
   const [view, setView] = useState<'list' | 'ctr'>('list');
   const [updating, setUpdating] = useState<number | null>(null);
+  const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
+  const [loading, setLoading] = useState(true);
   const { isExpert } = useExpertise();
+
+  useEffect(() => {
+    if (!siteUrl) {
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    fetch(`/api/progress?siteUrl=${encodeURIComponent(siteUrl)}&status=all&limit=50`)
+      .then(r => r.json())
+      .then(res => {
+        setOpportunities(res.opportunities || []);
+        setLoading(false);
+      })
+      .catch(err => {
+        console.error('Failed to load opportunities', err);
+        setLoading(false);
+      });
+  }, [siteUrl]);
 
   const filtered = opportunities
     .filter(o => filter === 'all' || o.status === 'open')
@@ -77,6 +97,34 @@ export function OpportunityQueue({ opportunities, siteUrl, onRefresh }: Props) {
       setUpdating(null);
     }
   };
+
+  if (loading) {
+    return (
+      <div style={{
+        background: 'rgba(255,255,255,0.02)', borderRadius: 16, padding: 32,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontFamily: '-apple-system, sans-serif', color: '#64748b', fontSize: 14,
+      }}>
+        Loading opportunities...
+      </div>
+    );
+  }
+
+  if (!siteUrl && opportunities.length === 0) {
+    return (
+      <div style={{
+        background: 'rgba(255,255,255,0.02)', border: '1px dashed rgba(255,255,255,0.1)',
+        borderRadius: 16, padding: '60px 32px', textAlign: 'center',
+        fontFamily: '-apple-system, sans-serif', color: '#f1f5f9',
+      }}>
+        <div style={{ fontSize: 48, marginBottom: 16 }}>🎯</div>
+        <h2 style={{ fontSize: 24, fontWeight: 700, margin: '0 0 8px' }}>No Opportunities Found</h2>
+        <p style={{ color: '#94a3b8', fontSize: 14, maxWidth: 400, margin: '0 auto' }}>
+          Connect your GSC data or upload a CSV to generate actionable SEO opportunities.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif', display: 'flex', flexDirection: 'column', gap: 16 }}>

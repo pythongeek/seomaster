@@ -62,7 +62,7 @@ export default function SEOMaster() {
   return (
     <div className="min-h-screen bg-bg">
       {/* ── Header ──────────────────────────────────────────────────────── */}
-      <header className="sticky top-0 z-50 bg-white border-b border-border shadow-sm">
+      <header className="sticky top-0 z-50 bg-bg border-b border-border shadow-sm">
         <div className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-15 py-3">
             {/* Logo */}
@@ -97,7 +97,7 @@ export default function SEOMaster() {
       </header>
 
       {/* ── Tab Navigation ──────────────────────────────────────────────── */}
-      <nav className="bg-white border-b border-border sticky top-[60px] z-40">
+      <nav className="bg-bg border-b border-border sticky top-[60px] z-40">
         <div className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex gap-1 overflow-x-auto py-2">
             {TABS.map((tab) => (
