@@ -8,3 +8,5 @@ export { IndexDiagnoser } from "./IndexDiagnoser";
 export { CrawlAnalyzer } from "./CrawlAnalyzer";
 export { GeoMatrix } from "./GeoMatrix";
 export { SitemapValidator } from "./SitemapValidator";
+export { TopicClusters } from "./TopicClusters";
+export { CoreWebVitals } from "./CoreWebVitals";

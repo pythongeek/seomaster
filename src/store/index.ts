@@ -140,7 +140,7 @@ export const useStore = create<SEOStore>()(
       }),
 
       // Active Tab
-      activeTab: "gsc",
+      activeTab: "dashboard",
       setActiveTab: (tab) => set({ activeTab: tab }),
 
       // Background Jobs

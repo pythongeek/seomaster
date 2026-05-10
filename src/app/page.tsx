@@ -1,51 +1,61 @@
 "use client";
 
-import { useState } from "react";
 import {
   GscCommandCenter,
   CtrLab,
-  KeywordResearch,
-  TopicAnalyzer,
-  SavedReports,
-  RegexFilter,
-  IndexDiagnoser,
   CrawlAnalyzer,
   GeoMatrix,
-  SitemapValidator,
+  TopicClusters,
+  CoreWebVitals,
 } from "@/components/tabs";
 
+import {
+  AIOverviewPanel,
+  ContentGapPanel,
+  ExecutiveDashboard,
+  OpportunityQueue,
+} from "@/components/panels";
+
+import { ExpertiseLevelToggle } from "@/components/ui/ExpertiseLevelToggle";
 import { useStore } from "@/store";
 
 // ─── Tab Configuration ──────────────────────────────────────────────────────
 const TABS = [
-  { key: "gsc", label: "GSC", icon: "📊" },
-  { key: "ctr", label: "CTR Lab", icon: "🎯" },
-  { key: "keywords", label: "Keywords", icon: "🔬" },
-  { key: "filter", label: "Filter", icon: "🔍" },
-  { key: "index", label: "Index", icon: "🩺" },
-  { key: "crawl", label: "Crawl", icon: "🖥️" },
-  { key: "geo", label: "GEO", icon: "📐" },
-  { key: "sitemap", label: "Sitemap", icon: "🗺️" },
-  { key: "topic", label: "Topic", icon: "🔬" },
-  { key: "reports", label: "Reports", icon: "📚" },
+  { key: "dashboard", label: "Dashboard", icon: "📊" },
+  { key: "opportunities", label: "Opportunities", icon: "🎯" },
+  { key: "ai_risk", label: "AI & GEO Risk", icon: "🤖" },
+  { key: "content_gap", label: "Content Gap", icon: "📋" },
+  { key: "gsc", label: "GSC Data", icon: "🔌" },
+  { key: "ctr", label: "CTR Lab", icon: "📐" },
+  { key: "clusters", label: "Topic Clusters", icon: "🔬" },
+  { key: "cwv", label: "Core Web Vitals", icon: "⚡" },
+  { key: "geo", label: "Geo & Device", icon: "🌍" },
+  { key: "crawl", label: "Crawl & Index", icon: "🩺" },
 ];
 
 export default function SEOMaster() {
-  const { activeTab, setActiveTab } = useStore();
+  const { activeTab, setActiveTab, siteUrl, gscResult } = useStore();
 
   const renderTab = () => {
+    // Map gscResult to expected arrays if possible, else empty array
+    const opportunities = (gscResult as any)?.opportunities || [];
+    const aiItems = gscResult?.aiOverviewCandidates || [];
+    const contentGaps = gscResult?.contentGaps || [];
+    const topicClusters = (gscResult as any)?.clusters || [];
+    const cwvPages = (gscResult as any)?.cwvPages || [];
+
     switch (activeTab) {
+      case "dashboard": return <ExecutiveDashboard siteUrl={siteUrl} />;
+      case "opportunities": return <OpportunityQueue siteUrl={siteUrl} opportunities={opportunities} />;
+      case "ai_risk": return <AIOverviewPanel items={aiItems as any} />;
+      case "content_gap": return <ContentGapPanel gaps={contentGaps as any} />;
       case "gsc": return <GscCommandCenter />;
       case "ctr": return <CtrLab />;
-      case "keywords": return <KeywordResearch />;
-      case "filter": return <RegexFilter />;
-      case "index": return <IndexDiagnoser />;
-      case "crawl": return <CrawlAnalyzer />;
+      case "clusters": return <TopicClusters clusters={topicClusters} />;
+      case "cwv": return <CoreWebVitals pages={cwvPages} />;
       case "geo": return <GeoMatrix />;
-      case "sitemap": return <SitemapValidator />;
-      case "topic": return <TopicAnalyzer />;
-      case "reports": return <SavedReports />;
-      default: return <GscCommandCenter />;
+      case "crawl": return <CrawlAnalyzer />;
+      default: return <ExecutiveDashboard siteUrl={siteUrl} />;
     }
   };
 
@@ -71,12 +81,16 @@ export default function SEOMaster() {
             </div>
 
             {/* Status */}
-            <div className="hidden sm:flex items-center gap-3 text-[11px]">
-              <span className="text-muted">Engine</span>
-              <span className="inline-flex items-center gap-1.5 bg-green-light text-green-dark border border-green/20 rounded-full px-3 py-1 text-[10px] font-bold tracking-wide">
-                <span className="w-1.5 h-1.5 rounded-full bg-green animate-pulse" />
-                MiniMax M2.7
-              </span>
+            <div className="hidden sm:flex items-center gap-6 text-[11px]">
+              <ExpertiseLevelToggle compact />
+              
+              <div className="flex items-center gap-3">
+                <span className="text-muted">Engine</span>
+                <span className="inline-flex items-center gap-1.5 bg-green-light text-green-dark border border-green/20 rounded-full px-3 py-1 text-[10px] font-bold tracking-wide">
+                  <span className="w-1.5 h-1.5 rounded-full bg-green animate-pulse" />
+                  MiniMax M2.7
+                </span>
+              </div>
             </div>
           </div>
         </div>
@@ -91,7 +105,7 @@ export default function SEOMaster() {
                 key={tab.key}
                 onClick={() => setActiveTab(tab.key)}
                 className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-[13px] font-semibold whitespace-nowrap transition-all duration-150 ${
-                  activeTab === tab.key
+                  activeTab === tab.key || (activeTab === "gsc" && tab.key === "dashboard" && false) // fallbacks handled in switch
                     ? "bg-red text-white shadow-md shadow-red/15"
                     : "text-muted hover:text-text hover:bg-surface"
                 }`}
