@@ -5,6 +5,7 @@ import { HealthScoreBadge } from '@/components/ui/HealthScoreBadge';
 import { PriorityActionFeed } from '@/components/ui/PriorityActionFeed';
 import { ExpertiseLevelToggle } from '@/components/ui/ExpertiseLevelToggle';
 import { useExpertise } from '@/store/expertise-context';
+import { useStore } from '@/store';
 import type { HealthScoreResult } from '@/types';
 
 interface DashboardData {
@@ -112,6 +113,32 @@ export function ExecutiveDashboard({ siteUrl }: Props) {
         fontFamily: '-apple-system, sans-serif', color: '#64748b', fontSize: 14,
       }}>
         Loading dashboard...
+      </div>
+    );
+  }
+
+  if (!siteUrl && !data.healthScore) {
+    return (
+      <div style={{
+        background: 'rgba(255,255,255,0.02)', border: '1px dashed rgba(255,255,255,0.1)',
+        borderRadius: 16, padding: '60px 32px', textAlign: 'center',
+        fontFamily: '-apple-system, sans-serif', color: '#f1f5f9',
+      }}>
+        <div style={{ fontSize: 48, marginBottom: 16 }}>🔌</div>
+        <h2 style={{ fontSize: 24, fontWeight: 700, margin: '0 0 8px' }}>Connect Your Data</h2>
+        <p style={{ color: '#94a3b8', fontSize: 14, maxWidth: 400, margin: '0 auto 24px' }}>
+          To view your Executive Dashboard and AI recommendations, you need to connect your Google Search Console or upload a CSV export.
+        </p>
+        <button
+          onClick={() => useStore.getState().setActiveTab('gsc')}
+          style={{
+            background: '#ef4444', color: '#fff', border: 'none', padding: '12px 24px',
+            borderRadius: 8, fontSize: 14, fontWeight: 700, cursor: 'pointer',
+            boxShadow: '0 4px 14px 0 rgba(239,68,68,0.39)',
+          }}
+        >
+          Connect GSC / Upload Data
+        </button>
       </div>
     );
   }

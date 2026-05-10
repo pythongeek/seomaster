@@ -111,7 +111,7 @@ export default function SEOMaster() {
                 }`}
               >
                 <span className="text-sm">{tab.icon}</span>
-                <span className="hidden sm:inline">{tab.label}</span>
+                <span className="inline">{tab.label}</span>
               </button>
             ))}
           </div>
