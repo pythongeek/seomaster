@@ -9,7 +9,7 @@ import type { ActionType } from '@/lib/action-router';
 import { computeHealthScore } from '@/lib/health-score';
 import { analyseTrend, buildPositionSeries } from '@/lib/trend-analyser';
 import { runResolutionDiff } from '@/lib/progress-engine';
-import { upsertOpportunity, getOpenOpportunities, markOpportunityResolved, saveHealthSnapshot, getLatestHealthScore, getOrCreateSite, updateSiteHealthScore, initPremiumTables } from '@/db/queries';
+import { upsertOpportunity, getOpenOpportunities, markOpportunityResolved, saveHealthSnapshot, getLatestHealthScore, getOrCreateSite, updateSiteHealthScore, initPremiumTables, saveReport } from '@/db/queries';
 import type { TrendResult } from '@/lib/trend-analyser';
 import { buildTopicClusters } from '@/lib/topic-clusters';
 
@@ -1166,10 +1166,21 @@ ${pageHealth.slice(-5).map(p => `URL: ${p.url.split('/').pop()} | Grade: ${p.hea
         });
 
         await updateSiteHealthScore(siteUrl, healthResult.overallScore);
-      } catch (premiumErr) {
+    } catch (premiumErr) {
         console.warn('[Premium pipeline error — non-critical]', premiumErr);
       }
     })(); // fire and forget
+
+    try {
+      await saveReport({
+        report_type: 'gsc_full',
+        title: `GSC Analysis — ${options?.siteUrl || 'unknown site'} (${new Date().toLocaleDateString()})`,
+        data: rows.slice(0, 100),
+        summary: overview as any,
+      });
+    } catch (e) {
+      console.warn('Failed to save session report:', e);
+    }
 
     return NextResponse.json({ result });
   } catch (err) {
