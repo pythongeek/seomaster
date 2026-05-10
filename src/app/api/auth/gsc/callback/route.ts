@@ -98,7 +98,7 @@ export async function GET(req: NextRequest) {
       )
       ON CONFLICT (user_email) DO UPDATE SET
         access_token = EXCLUDED.access_token,
-        refresh_token = EXCLUDED.refresh_token,
+        refresh_token = COALESCE(NULLIF(EXCLUDED.refresh_token, ''), gsc_oauth_tokens.refresh_token),
         token_type = EXCLUDED.token_type,
         expires_at = EXCLUDED.expires_at,
         updated_at = CURRENT_TIMESTAMP

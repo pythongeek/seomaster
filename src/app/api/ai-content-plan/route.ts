@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { callMiniMaxRaw, extractJSON } from "@/lib/ai-client";
+import { callMiniMaxRaw, callGeminiRaw, extractJSON } from "@/lib/ai-client";
 import { z } from "zod";
 
 export const runtime = "nodejs";
@@ -164,7 +164,10 @@ The plan should match the category (e.g., cannibalization = redirects, CTR = tit
       return NextResponse.json({ error: `Unknown type: ${type}` }, { status: 400 });
     }
 
-    const rawText = await callMiniMaxRaw(systemPrompt, userContent, 4096);
+    const engine = req.headers.get('x-ai-engine') === 'gemini' ? 'gemini' : 'minimax';
+    const rawText = engine === 'gemini' 
+      ? await callGeminiRaw(systemPrompt, userContent, 4096)
+      : await callMiniMaxRaw(systemPrompt, userContent, 4096);
     const jsonStr = extractJSON(rawText);
 
     let parsed: unknown;

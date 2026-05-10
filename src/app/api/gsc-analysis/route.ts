@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { initDB, saveReport, saveGSCSnapshot } from '@/db/queries';
 import { getGenericBenchmark, getDynamicBenchmark } from '@/lib/serp-engine';
-import { callMiniMaxRaw, extractJSON } from '@/lib/ai-client';
+import { callMiniMaxRaw, callGeminiRaw, extractJSON } from '@/lib/ai-client';
 import { AISynthesisSchema } from '@/lib/ai-schemas';
 
 export const runtime = 'nodejs';
@@ -439,11 +439,18 @@ Provide expert SEO synthesis in this EXACT JSON structure (no markdown fences):
   "quickestWin": "Single highest-ROI action that can be done this week"
 }`;
 
-      const aiRaw = await callMiniMaxRaw(
-        'You are a senior SEO strategist. You receive fully-processed algorithmic analysis. Return only valid JSON matching the schema. No markdown, no code fences, no explanation outside the JSON.',
-        aiPrompt,
-        2000
-      );
+      const engine = req.headers.get('x-ai-engine') === 'gemini' ? 'gemini' : 'minimax';
+      const aiRaw = engine === 'gemini'
+        ? await callGeminiRaw(
+          'You are a senior SEO strategist. You receive fully-processed algorithmic analysis. Return only valid JSON matching the schema. No markdown, no code fences, no explanation outside the JSON.',
+          aiPrompt,
+          2000
+        )
+        : await callMiniMaxRaw(
+          'You are a senior SEO strategist. You receive fully-processed algorithmic analysis. Return only valid JSON matching the schema. No markdown, no code fences, no explanation outside the JSON.',
+          aiPrompt,
+          2000
+        );
 
       const clean = aiRaw.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
       try { aiSynthesis = JSON.parse(clean); }

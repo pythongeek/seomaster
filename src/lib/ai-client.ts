@@ -2,10 +2,13 @@ import { z } from "zod";
 
 const AI_TIMEOUT_MS = 90000;
 
-// MiniMax Token Plan API — BASE_URL is the root; path appended per-call
-const BASE_URL = process.env.MINIMAX_BASE_URL || "https://api.minimax.io/anthropic";
-const API_KEY = process.env.MINIMAX_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN || process.env.OPENROUTER_API_KEY || "";
-const MODEL = process.env.MINIMAX_MODEL || process.env.ANTHROPIC_MODEL || "MiniMax-M2.7";
+// MiniMax / Anthropic Setup
+const ANTHROPIC_BASE_URL = process.env.ANTHROPIC_BASE_URL || process.env.MINIMAX_BASE_URL || "https://api.minimax.io/anthropic";
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_AUTH_TOKEN || process.env.MINIMAX_API_KEY || process.env.OPENROUTER_API_KEY || "";
+const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || process.env.MINIMAX_MODEL || "MiniMax-M2.7";
+
+// Gemini Setup
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
 
 async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: number): Promise<Response> {
   const controller = new AbortController();
@@ -21,20 +24,20 @@ async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: nu
  * Basic MiniMax/Anthropic call returning a raw string.
  */
 export async function callMiniMaxRaw(systemPrompt: string, userContent: string, maxTokens = 4096): Promise<string> {
-  if (!API_KEY) throw new Error("AI API key not configured");
+  if (!ANTHROPIC_API_KEY) throw new Error("Anthropic/MiniMax API key not configured");
 
   const resp = await fetchWithTimeout(
-    `${BASE_URL}/v1/messages`,
+    `${ANTHROPIC_BASE_URL}/v1/messages`,
     {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${API_KEY}`,
-        "x-api-key": API_KEY, // MiniMax requires BOTH headers
+        Authorization: `Bearer ${ANTHROPIC_API_KEY}`,
+        "x-api-key": ANTHROPIC_API_KEY, // MiniMax compatibility
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: MODEL,
+        model: ANTHROPIC_MODEL,
         max_tokens: maxTokens,
         stream: false,
         system: systemPrompt,
@@ -64,6 +67,41 @@ export async function callMiniMaxRaw(systemPrompt: string, userContent: string, 
 }
 
 /**
+ * Basic Gemini call returning a raw string.
+ */
+export async function callGeminiRaw(systemPrompt: string, userContent: string, maxTokens = 4096): Promise<string> {
+  if (!GEMINI_API_KEY) throw new Error("Gemini API key not configured");
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+  
+  const resp = await fetchWithTimeout(
+    url,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: systemPrompt }] },
+        contents: [{ parts: [{ text: userContent }] }],
+        generationConfig: {
+          maxOutputTokens: maxTokens,
+          temperature: 0.2
+        }
+      }),
+    },
+    AI_TIMEOUT_MS
+  );
+
+  const responseText = await resp.text();
+
+  if (!resp.ok) {
+    throw new Error(`Gemini API error ${resp.status}: ${responseText}`);
+  }
+
+  const data = JSON.parse(responseText);
+  return data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+}
+
+/**
  * Extracts JSON from a markdown string if wrapped in ```json ... ``` blocks
  */
 export function extractJSON(text: string): string {
@@ -71,7 +109,6 @@ export function extractJSON(text: string): string {
   if (match && match[1]) {
     return match[1].trim();
   }
-  // Try to find first { and last } if no markdown
   const startIdx = text.indexOf('{');
   const endIdx = text.lastIndexOf('}');
   if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
@@ -81,22 +118,25 @@ export function extractJSON(text: string): string {
 }
 
 /**
- * Calls AI and validates output against a Zod schema with a retry loop.
+ * Calls AI (MiniMax or Gemini) and validates output against a Zod schema with a retry loop.
  */
 export async function callAIValidated<T>(
   systemPrompt: string,
   userContent: string,
   schema: z.ZodSchema<T>,
+  engine: 'minimax' | 'gemini' = 'minimax',
   maxRetries = 2
 ): Promise<T> {
   let promptAttempt = userContent;
   
-  // Append JSON structure hints to the prompt
   promptAttempt += `\n\nReturn ONLY valid JSON matching this structure. No markdown formatting, no explanations:\n${JSON.stringify(schema, null, 2)}`;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
-      const rawText = await callMiniMaxRaw(systemPrompt, promptAttempt);
+      const rawText = engine === 'gemini' 
+        ? await callGeminiRaw(systemPrompt, promptAttempt)
+        : await callMiniMaxRaw(systemPrompt, promptAttempt);
+        
       const jsonStr = extractJSON(rawText);
       const parsed = JSON.parse(jsonStr);
       
@@ -105,7 +145,6 @@ export async function callAIValidated<T>(
         return result.data;
       }
       
-      // Validation failed, construct error message for retry
       const errors = result.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join(", ");
       console.warn(`[AI Validation Failed - Attempt ${attempt + 1}]`, errors);
       
@@ -138,6 +177,7 @@ export async function generateActionPlan(
     aiRiskScore?: number;
     ctrGap?: number;
   },
+  engine: 'minimax' | 'gemini' = 'minimax'
 ) {
   const { ActionPlanSchema } = await import('./ai-schemas');
   const system = `You are a senior SEO consultant generating precise, actionable instructions for website owners.
@@ -159,12 +199,11 @@ ${context.cannibalisationPages?.length ? `Competing Pages: ${context.cannibalisa
 
 Create 3-5 numbered steps that specifically fix this issue. Be concrete — mention exact character counts, specific tactics, named tools where relevant.`;
 
-  return callAIValidated(system, user, ActionPlanSchema);
+  return callAIValidated(system, user, ActionPlanSchema, engine);
 }
 
 /**
  * Generate 3-5 optimized title tag and meta description variants.
- * Uses MiniMax M2.7.
  */
 export async function generateTitleVariants(
   query: string,
@@ -173,6 +212,7 @@ export async function generateTitleVariants(
   currentCTR: number,
   benchmarkCTR: number,
   position: number,
+  engine: 'minimax' | 'gemini' = 'minimax'
 ) {
   const { TitleVariantsSchema } = await import('./ai-schemas');
   const system = `You are a world-class conversion copywriter specializing in SEO title tag optimization.
@@ -199,12 +239,11 @@ For each: predict CTR lift in percentage points, list the key power words used, 
 
 Also provide 3 meta description variants (max 155 chars) with strong CTAs.`;
 
-  return callAIValidated(system, user, TitleVariantsSchema);
+  return callAIValidated(system, user, TitleVariantsSchema, engine);
 }
 
 /**
  * Generate a full content brief for a target query.
- * Uses MiniMax M2.7 for synthesis, optionally enriched with Gemini SERP data.
  */
 export async function generateContentBrief(
   query: string,
@@ -215,6 +254,7 @@ export async function generateContentBrief(
     paaQuestions: string[];
     hasFeaturedSnippet: boolean;
   },
+  engine: 'minimax' | 'gemini' = 'minimax'
 ) {
   const { ContentBriefSchema } = await import('./ai-schemas');
   const system = `You are a senior content strategist and SEO expert. Generate comprehensive content briefs that help writers create content that outranks competitors.
@@ -241,6 +281,6 @@ The content brief must include:
 
 Focus on creating content that could displace a featured snippet and earn AI citations.`;
 
-  return callAIValidated(system, user, ContentBriefSchema);
+  return callAIValidated(system, user, ContentBriefSchema, engine);
 }
 

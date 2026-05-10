@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Modal, Badge, Button } from "@/components/ui";
+import { useStore } from "@/store";
 
 interface AiOverviewDetailModalProps {
   open: boolean;
@@ -59,9 +60,13 @@ export function AiOverviewDetailModal({ open, onClose, candidate }: AiOverviewDe
     setAiError("");
     setAiPlan(null);
     try {
+      const aiEngine = useStore.getState().aiEngine;
       const resp = await fetch("/api/ai-content-plan", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "x-ai-engine": aiEngine
+        },
         body: JSON.stringify({
           type: "ai_overview",
           data: {

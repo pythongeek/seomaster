@@ -765,7 +765,8 @@ function findCompetitiveGaps(rows: EnrichedRow[]): CompetitiveGap[] {
 
 export async function POST(req: NextRequest) {
   try {
-    const { data: rows, options } = await req.json() as { data: GSCRow[]; options?: { siteUrl?: string; startDate?: string; endDate?: string } };
+    const body = await req.json();
+    const { data: rows, options = {} } = body as { data: GSCRow[]; options: { siteUrl?: string; startDate?: string; endDate?: string; aiEngine?: 'minimax' | 'gemini' } };
 
     if (!rows || !Array.isArray(rows) || rows.length === 0) {
       return NextResponse.json({ error: 'data (array of GSC rows) is required' }, { status: 400 });
@@ -964,7 +965,7 @@ ${competitiveGaps.slice(0, 5).map(g => `Query: "${g.query}" | Pos: ${g.position}
 ## Page Health (Worst 5)
 ${pageHealth.slice(-5).map(p => `URL: ${p.url.split('/').pop()} | Grade: ${p.healthGrade} | Score: ${p.healthScore}/100 | Issues: ${p.issues.join(', ')}`).join('\n')}`;
 
-      aiSynthesis = await callAIValidated("You are an elite SEO strategist.", aiPrompt, AISynthesisSchema);
+      aiSynthesis = await callAIValidated("You are an elite SEO strategist.", aiPrompt, AISynthesisSchema, options?.aiEngine);
     } catch (aiErr) {
       console.warn('AI synthesis failed:', aiErr);
     }

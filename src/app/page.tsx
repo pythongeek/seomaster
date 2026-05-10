@@ -86,10 +86,21 @@ export default function SEOMaster() {
               
               <div className="flex items-center gap-3">
                 <span className="text-muted">Engine</span>
-                <span className="inline-flex items-center gap-1.5 bg-green-light text-green-dark border border-green/20 rounded-full px-3 py-1 text-[10px] font-bold tracking-wide">
-                  <span className="w-1.5 h-1.5 rounded-full bg-green animate-pulse" />
-                  MiniMax M2.7
-                </span>
+                <div className="relative">
+                  <select
+                    value={useStore(s => s.aiEngine)}
+                    onChange={e => useStore.getState().setAiEngine(e.target.value as 'minimax' | 'gemini')}
+                    className="appearance-none bg-surface border border-border text-text rounded-full pl-3 pr-8 py-1 text-[10px] font-bold tracking-wide cursor-pointer hover:border-blue/50 outline-none"
+                  >
+                    <option value="minimax">MiniMax M2.7</option>
+                    <option value="gemini">Gemini Pro</option>
+                  </select>
+                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-400">
+                    <svg className="fill-current h-3 w-3" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
+                      <path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z" />
+                    </svg>
+                  </div>
+                </div>
               </div>
             </div>
           </div>

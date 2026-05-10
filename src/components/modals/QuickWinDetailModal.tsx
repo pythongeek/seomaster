@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Modal, Badge, Button } from "@/components/ui";
+import { useStore } from "@/store";
 
 interface QuickWinDetailModalProps {
   open: boolean;
@@ -51,9 +52,13 @@ export function QuickWinDetailModal({ open, onClose, quickWin }: QuickWinDetailM
     setAiError("");
     setAiPlan(null);
     try {
+      const aiEngine = useStore.getState().aiEngine;
       const resp = await fetch("/api/ai-content-plan", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "x-ai-engine": aiEngine 
+        },
         body: JSON.stringify({
           type: "quick_win",
           data: {

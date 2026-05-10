@@ -184,7 +184,8 @@ export function GscCommandCenter({ onAnalysis }: GscCommandCenterProps) {
     if (!rows.length) { setError("Load data first."); return; }
     setLoading(true); setError(""); setResult(null);
     try {
-      const payload = { type: "gsc_full", data: rows, options: { siteUrl, startDate, endDate } };
+      const aiEngine = useStore.getState().aiEngine;
+      const payload = { type: "gsc_full", data: rows, options: { siteUrl, startDate, endDate, aiEngine } };
       if (rows.length > 10000) {
         const resp = await fetch("/api/jobs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "analyze", input: payload }) });
         const json = await resp.json();

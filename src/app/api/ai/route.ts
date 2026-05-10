@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { callMiniMaxRaw, callAIValidated } from '@/lib/ai-client';
+import { callMiniMaxRaw, callGeminiRaw, callAIValidated } from '@/lib/ai-client';
 import { AgenticAnalysisSchema } from '@/lib/ai-schemas';
 
 export const runtime = 'nodejs';
@@ -7,6 +7,7 @@ export const runtime = 'nodejs';
 export async function POST(req: NextRequest) {
   try {
     const { systemPrompt, userContent, mode } = await req.json();
+    const engine = req.headers.get('x-ai-engine') === 'gemini' ? 'gemini' : 'minimax';
 
     if (!systemPrompt || !userContent) {
       return NextResponse.json({ error: 'systemPrompt and userContent are required' }, { status: 400 });
@@ -23,12 +24,14 @@ export async function POST(req: NextRequest) {
 
 You analyze GSC data step-by-step and provide structured, actionable recommendations. Always cite the specific data points that support your analysis.`;
 
-      const structured = await callAIValidated(systemPromptAgentic, userContent, AgenticAnalysisSchema);
+      const structured = await callAIValidated(systemPromptAgentic, userContent, AgenticAnalysisSchema, engine);
       return NextResponse.json({ text: JSON.stringify(structured), structured });
     }
 
     // Standard AI call
-    const text = await callMiniMaxRaw(systemPrompt, userContent);
+    const text = engine === 'gemini'
+      ? await callGeminiRaw(systemPrompt, userContent)
+      : await callMiniMaxRaw(systemPrompt, userContent);
     return NextResponse.json({ text });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';

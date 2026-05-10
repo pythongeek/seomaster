@@ -63,6 +63,8 @@ interface GSCState {
 interface UIState {
   activeTab: string;
   setActiveTab: (tab: string) => void;
+  aiEngine: 'minimax' | 'gemini';
+  setAiEngine: (engine: 'minimax' | 'gemini') => void;
 }
 
 // ─── Job State Slice ─────────────────────────────────────────────────────────
@@ -139,9 +141,11 @@ export const useStore = create<SEOStore>()(
         rowLimit: 5000,
       }),
 
-      // Active Tab
+      // UI State
       activeTab: "dashboard",
       setActiveTab: (tab) => set({ activeTab: tab }),
+      aiEngine: 'minimax',
+      setAiEngine: (engine) => set({ aiEngine: engine }),
 
       // Background Jobs
       activeJobs: {},
