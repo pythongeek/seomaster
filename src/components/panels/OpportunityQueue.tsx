@@ -43,8 +43,8 @@ function deriveFromGscResult(gscResult: unknown, siteUrl: string): Opportunity[]
   // From priorityMatrix
   const priorityMatrix = (r.priorityMatrix as Array<{
     query?: string; page?: string; opportunityScore?: number;
-    recommendedAction?: string; effort?: string; impact?: string;
-    timeToValue?: string; commercialValue?: number;
+    recommendedAction?: string; effort?: string; effortLabel?: string;
+    impact?: string; timeToValue?: string; commercialValue?: number; category?: string;
   }>) || [];
   priorityMatrix.slice(0, 25).forEach(p => {
     opportunities.push({
