@@ -104,28 +104,46 @@ export const CrawlAnalysisSchema = z.object({
 
 // ─── Agentic Analysis ───────────────────────────────────────────────────────
 export const AgenticAnalysisSchema = z.object({
-  summary: z.string(),
+  summary: z.string().describe("2-3 sentence strategic verdict: what the data reveals and the single most important action"),
+  score: z.number().min(0).max(100).describe("Overall SEO health score based on CTR gaps, ranking positions, and opportunity size"),
   findings: z.array(
     z.object({
-      category: z.string(),
-      severity: z.string(),
-      query: z.string(),
-      page: z.string(),
-      metric: z.string(),
-      recommendation: z.string(),
-      citations: z.array(z.string()),
-      effort: z.string(),
-      impact: z.string(),
+      category: z.enum(["ctr_gap", "ranking_opportunity", "content_gap", "cannibalization", "index_bloat", "ux_issue", "ai_overview"]).describe("Type of issue"),
+      severity: z.enum(["critical", "high", "medium", "low"]).describe("Impact if not addressed"),
+      query: z.string().describe("Search query driving this finding"),
+      page: z.string().describe("URL affected"),
+      metric: z.string().describe("The key data point: e.g. 'Position 8.2, CTR 1.1% vs benchmark 3.2%'"),
+      diagnosis: z.string().describe("Why this is happening — the root cause"),
+      recommendation: z.string().describe("Specific fix — exact, actionable"),
+      citations: z.array(z.string()).describe("Data points supporting this finding"),
+      effort: z.enum(["quick_win", "medium", "significant"]).describe("Implementation complexity"),
+      impact: z.enum(["high", "medium", "low"]).describe("Expected click/visibility improvement"),
     })
   ),
-  topPriorityActions: z.array(z.string()),
+  topPriorityActions: z.array(z.string()).describe("The 3 most impactful actions, ordered by ROI"),
   aiOverviewCandidates: z.array(
     z.object({
       query: z.string(),
-      currentPosition: z.number(),
-      action: z.string(),
+      currentPosition: z.number().describe("Current average ranking"),
+      eligibility: z.enum(["likely", "possible", "unlikely"]).describe("AI Overview probability"),
+      action: z.string().describe("What to do to improve chances"),
+      estimatedTrafficGain: z.string().describe("Potential clicks if featured"),
     })
   ).optional(),
+  cannibalizationSignals: z.array(
+    z.object({
+      queries: z.array(z.string()),
+      pages: z.array(z.string()),
+      severity: z.string(),
+    })
+  ).optional().describe("Multiple pages competing for same query"),
+  quickWins: z.array(
+    z.object({
+      page: z.string(),
+      action: z.string().describe("Single, specific change"),
+      expectedLift: z.string().describe("e.g. '+12 clicks/month'"),
+    })
+  ).optional().describe("Changes with high impact and low effort"),
 });
 
 // ─── GEO Matrix ─────────────────────────────────────────────────────────────
