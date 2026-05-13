@@ -191,17 +191,28 @@ export function ExecutiveDashboard({ siteUrl }: Props) {
   const liveDerived = useMemo(() => deriveFromGscResult(gscResult), [gscResult]);
   const progressDerived = useMemo(() => deriveFromProgress(gscResult), [gscResult]);
 
-  // Use live data if gscResult is fresh (shows analysis results immediately after run)
-  // Use DB data if it's richer (historical trend series)
-  const hasLiveData = !!gscResult && !!((gscResult as unknown as Record<string, unknown>).overview);
-  const data: DashboardData = {
-    healthScore: hasLiveData ? liveDerived.healthScore : dbData.healthScore,
-    openOpportunities: hasLiveData ? progressDerived.openOpportunities : dbData.openOpportunities,
-    resolvedThisWeek: dbData.resolvedThisWeek,
-    estimatedMonthlyGain: hasLiveData ? progressDerived.estimatedMonthlyGain : dbData.estimatedMonthlyGain,
-    priorityActions: hasLiveData ? liveDerived.priorityActions : dbData.priorityActions,
-    trendSeries: dbData.trendSeries.length > 0 ? dbData.trendSeries : [],
-  };
+  // Use DB data only if it has real scores (not 0/default)
+  // Use gscResult data if available (from current session or persisted)
+  const dbHasData = dbData.healthScore !== null && dbData.healthScore.overallScore > 0;
+  const liveHasData = gscResult !== null && Object.keys(gscResult).length > 0;
+
+  const useLive = liveHasData;
+  const useDb = !useLive && dbHasData;
+
+  // Build data from whichever source has real data
+  const hs = useLive
+    ? liveDerived.healthScore
+    : useDb ? dbData.healthScore : null;
+  const totalGain = useLive
+    ? progressDerived.estimatedMonthlyGain
+    : useDb ? (dbData.estimatedMonthlyGain || 0) : 0;
+  const openOpp = useLive
+    ? progressDerived.openOpportunities
+    : useDb ? dbData.openOpportunities : 0;
+  const priorityActions = useLive
+    ? liveDerived.priorityActions
+    : useDb ? dbData.priorityActions : [];
+  const trendSeries = useDb ? dbData.trendSeries : [];
 
   if (loading) {
     return (
@@ -214,6 +225,16 @@ export function ExecutiveDashboard({ siteUrl }: Props) {
       </div>
     );
   }
+
+  // Build data object for any remaining references
+  const data: DashboardData = {
+    healthScore: hs,
+    openOpportunities: openOpp,
+    resolvedThisWeek: dbData.resolvedThisWeek,
+    estimatedMonthlyGain: totalGain,
+    priorityActions,
+    trendSeries,
+  };
 
   if (!siteUrl && !data.healthScore) {
     return (
@@ -240,9 +261,6 @@ export function ExecutiveDashboard({ siteUrl }: Props) {
       </div>
     );
   }
-
-  const hs = data.healthScore;
-  const totalGain = data.estimatedMonthlyGain;
 
   return (
     <div style={{
