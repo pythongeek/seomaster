@@ -193,7 +193,7 @@ export function ExecutiveDashboard({ siteUrl }: Props) {
 
   // Use live data if gscResult is fresh (shows analysis results immediately after run)
   // Use DB data if it's richer (historical trend series)
-  const hasLiveData = !!gscResult && !!((gscResult as Record<string, unknown>).overview);
+  const hasLiveData = !!gscResult && !!((gscResult as unknown as Record<string, unknown>).overview);
   const data: DashboardData = {
     healthScore: hasLiveData ? liveDerived.healthScore : dbData.healthScore,
     openOpportunities: hasLiveData ? progressDerived.openOpportunities : dbData.openOpportunities,
