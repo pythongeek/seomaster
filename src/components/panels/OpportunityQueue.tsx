@@ -5,6 +5,7 @@ import { ActionPlanCard } from '@/components/ui/ActionPlanCard';
 import { ProgressTracker } from '@/components/ui/ProgressTracker';
 import { CtrBeforeAfter } from '@/components/ui/CtrBeforeAfter';
 import { useExpertise } from '@/store/expertise-context';
+import { useStore } from '@/store';
 import type { ActionPlan } from '@/types';
 
 interface Opportunity {
@@ -24,7 +25,7 @@ interface Opportunity {
 }
 
 interface Props {
-  opportunities: Opportunity[];
+  opportunities?: Opportunity[];
   siteUrl: string;
   onRefresh?: () => void;
 }
@@ -32,12 +33,87 @@ interface Props {
 type SortKey = 'score' | 'gain' | 'position';
 type FilterStatus = 'open' | 'all';
 
-export function OpportunityQueue({ siteUrl, onRefresh }: Omit<Props, 'opportunities'> & { opportunities?: Opportunity[] }) {
+// Derive opportunities from gscResult when DB is empty
+function deriveFromGscResult(gscResult: unknown, siteUrl: string): Opportunity[] {
+  if (!gscResult) return [];
+  const r = gscResult as Record<string, unknown>;
+
+  const opportunities: Opportunity[] = [];
+
+  // From priorityMatrix
+  const priorityMatrix = (r.priorityMatrix as Array<{
+    query?: string; page?: string; opportunityScore?: number;
+    recommendedAction?: string; effort?: string; impact?: string;
+    timeToValue?: string; commercialValue?: number;
+  }>) || [];
+  priorityMatrix.slice(0, 25).forEach(p => {
+    opportunities.push({
+      id: 0, // derived, not from DB
+      query: p.query ?? '',
+      page: p.page ?? '',
+      position: 0,
+      ctr: 0,
+      impressions: 0,
+      score: p.opportunityScore ?? 0,
+      estimatedGain: p.commercialValue ?? 0,
+      actionType: p.category ?? 'position',
+      actionPlan: p.recommendedAction ? {
+        actionType: p.category ?? 'position',
+        priority: p.impact ?? 'medium',
+        effort: p.effort ?? 'medium',
+        effortLabel: p.effortLabel ?? p.effort ?? 'medium',
+        steps: p.timeToValue ? [{ stepNumber: 1, title: 'Execute recommendation', description: p.recommendedAction, timeEstimate: p.timeToValue, expectedLift: '' }] : [],
+        summary: p.recommendedAction ?? '',
+        estimatedGain: String(p.commercialValue ?? 0),
+        timeToValue: p.timeToValue ?? '',
+        whyThisMatters: '',
+      } : null,
+      status: 'open',
+    });
+  });
+
+  // From quickWins
+  const quickWins = (r.quickWins as Array<{
+    query?: string; page?: string; position?: number; estimatedTrafficGain?: number;
+    action?: string; effort?: string; currentCTR?: number; benchmarkCTR?: number;
+  }>) || [];
+  quickWins.slice(0, 15).forEach(qw => {
+    opportunities.push({
+      id: 0,
+      query: qw.query ?? '',
+      page: qw.page ?? '',
+      position: qw.position ?? 0,
+      ctr: qw.currentCTR ?? 0,
+      impressions: 0,
+      score: Math.round((qw.estimatedTrafficGain ?? 0) / 10),
+      estimatedGain: qw.estimatedTrafficGain ?? 0,
+      actionType: 'quick_win_content',
+      actionPlan: qw.action ? {
+        actionType: 'quick_win_content',
+        priority: 'medium',
+        effort: qw.effort ?? 'low',
+        effortLabel: qw.effort ?? 'low',
+        steps: [{ stepNumber: 1, title: 'Quick win action', description: qw.action, timeEstimate: '1-2 weeks', expectedLift: `+${qw.estimatedTrafficGain} clicks` }],
+        summary: qw.action ?? '',
+        estimatedGain: String(qw.estimatedTrafficGain ?? 0),
+        timeToValue: qw.effort ?? 'low',
+        whyThisMatters: '',
+      } : null,
+      status: 'open',
+      benchmarkCTR: qw.benchmarkCTR,
+    });
+  });
+
+  return opportunities;
+}
+
+export function OpportunityQueue({ siteUrl, onRefresh }: Props) {
+  const gscResult = useStore(s => s.gscResult);
   const [sort, setSort] = useState<SortKey>('score');
   const [filter, setFilter] = useState<FilterStatus>('open');
   const [view, setView] = useState<'list' | 'ctr'>('list');
   const [updating, setUpdating] = useState<number | null>(null);
-  const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
+  const [dbOpportunities, setDbOpportunities] = useState<Opportunity[]>([]);
   const [loading, setLoading] = useState(true);
   const { isExpert } = useExpertise();
 
@@ -50,7 +126,7 @@ export function OpportunityQueue({ siteUrl, onRefresh }: Omit<Props, 'opportunit
     fetch(`/api/progress?siteUrl=${encodeURIComponent(siteUrl)}&status=all&limit=50`)
       .then(r => r.json())
       .then(res => {
-        setOpportunities(res.opportunities || []);
+        setDbOpportunities(res.opportunities || []);
         setLoading(false);
       })
       .catch(err => {
@@ -58,6 +134,9 @@ export function OpportunityQueue({ siteUrl, onRefresh }: Omit<Props, 'opportunit
         setLoading(false);
       });
   }, [siteUrl]);
+
+  // Use DB opportunities if available, otherwise derive from gscResult
+  const opportunities = dbOpportunities.length > 0 ? dbOpportunities : deriveFromGscResult(gscResult, siteUrl);
 
   const filtered = opportunities
     .filter(o => filter === 'all' || o.status === 'open')

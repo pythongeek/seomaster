@@ -216,6 +216,7 @@ export const useStore = create<SEOStore>()(
         gscResult: state.gscResult,
         siteUrl: state.siteUrl,
         csvText: state.csvText,
+        activeTab: state.activeTab,
       }),
     }
   )

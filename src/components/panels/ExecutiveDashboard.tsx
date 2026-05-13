@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { HealthScoreBadge } from '@/components/ui/HealthScoreBadge';
 import { PriorityActionFeed } from '@/components/ui/PriorityActionFeed';
 import { ExpertiseLevelToggle } from '@/components/ui/ExpertiseLevelToggle';
@@ -43,67 +43,165 @@ interface Props {
   siteUrl: string;
 }
 
-export function ExecutiveDashboard({ siteUrl }: Props) {
-  const [data, setData] = useState<DashboardData>({
+// Derive dashboard stats from gscResult (instant, no DB round-trip)
+function deriveFromGscResult(gscResult: unknown): {
+  healthScore: HealthScoreResult | null;
+  openOpportunities: number;
+  resolvedThisWeek: number;
+  estimatedMonthlyGain: number;
+  priorityActions: DashboardData['priorityActions'];
+} {
+  if (!gscResult) return {
     healthScore: null, openOpportunities: 0, resolvedThisWeek: 0,
-    estimatedMonthlyGain: 0, priorityActions: [], trendSeries: [],
+    estimatedMonthlyGain: 0, priorityActions: [],
+  };
+
+  const r = gscResult as Record<string, unknown>;
+
+  // Build health score from ctrAnalysis + overview
+  const overview = r.overview as { totalClicks?: number; totalImpressions?: number; avgCTR?: number; avgPosition?: number; potentialClicksGain?: number; cannibalizedQueries?: number } | undefined;
+  const ctr = r.ctrAnalysis as { overallCTR?: number; benchmarkCTR?: number; gap?: number; belowBenchmark?: number; zeroClickQueries?: number; zeroClickRate?: number } | undefined;
+  const quickWins = (r.quickWins as Array<{ estimatedTrafficGain?: number; effort?: string }>) || [];
+  const priorityMatrix = (r.priorityMatrix as Array<{ opportunityScore?: number; recommendedAction?: string; effort?: string; impact?: string; query?: string; timeToValue?: string }>) || [];
+  const aiCandidates = (r.aiOverviewCandidates as Array<{ eligibility?: string; estimatedTrafficGain?: string }>) || [];
+  const cannibalization = (r.cannibalization as Array<{ severity?: string }>) || [];
+
+  // Compute health score (0-100)
+  let score = 50;
+  if (ctr) {
+    const ctrRatio = ctr.benchmarkCTR && ctr.benchmarkCTR > 0 ? (ctr.overallCTR || 0) / ctr.benchmarkCTR : 1;
+    score += Math.round((ctrRatio - 0.5) * 40); // ±20 based on CTR vs benchmark
+  }
+  const belowPct = ctr && ctr.benchmarkCTR ? (ctr.belowBenchmark || 0) / ((r.overview as { totalQueries?: number })?.totalQueries || 1) : 0;
+  score -= Math.round(belowPct * 20); // penalty for high % below benchmark
+  score = Math.max(0, Math.min(100, score));
+
+  const grade =
+    score >= 90 ? 'A' : score >= 75 ? 'B' : score >= 60 ? 'C' : score >= 40 ? 'D' : 'F';
+
+  // Priority actions from quick wins + priority matrix
+  const priorityActions: DashboardData['priorityActions'] = [];
+
+  quickWins.slice(0, 5).forEach(qw => {
+    priorityActions.push({
+      actionType: 'quick_win_content',
+      label: ACTION_LABELS['quick_win_content'] ?? 'Quick Win',
+      description: qw.estimatedTrafficGain ? `+${qw.estimatedTrafficGain} clicks/mo` : 'Quick win',
+      estimatedGain: qw.estimatedTrafficGain ?? 0,
+      effort: qw.effort ?? 'low',
+      effortLabel: qw.effort ?? 'low',
+      color: ACTION_COLORS['quick_win_content'] ?? '#64748b',
+      steps: [],
+    });
+  });
+
+  priorityMatrix.filter(p => p.impact === 'critical' || p.impact === 'high').slice(0, 5).forEach(p => {
+    priorityActions.push({
+      actionType: 'position',
+      label: p.query?.substring(0, 60) ?? 'Priority',
+      description: p.recommendedAction ?? '',
+      estimatedGain: p.opportunityScore ?? 0,
+      effort: p.effort ?? 'medium',
+      effortLabel: p.effort ?? 'medium',
+      color: '#3b82f6',
+      steps: [],
+    });
+  });
+
+  const totalGain = quickWins.reduce((s: number, q: { estimatedTrafficGain?: number }) => s + (q.estimatedTrafficGain ?? 0), 0);
+
+  const healthScore: HealthScoreResult = {
+    overallScore: score,
+    grade,
+    trend: '→ Stable',
+    weeklyDelta: null,
+    dimensions: [],
+    totalOpportunities: priorityMatrix.length,
+    resolvedThisWeek: 0,
+    estimatedMonthlyGain: totalGain,
+  };
+
+  return {
+    healthScore,
+    openOpportunities: priorityMatrix.filter(p => p.impact === 'critical' || p.impact === 'high').length,
+    resolvedThisWeek: 0,
+    estimatedMonthlyGain: totalGain,
+    priorityActions,
+  };
+}
+
+// Derive opportunity count + estimated gain from gscResult
+function deriveFromProgress(gscResult: unknown): { openOpportunities: number; estimatedMonthlyGain: number } {
+  if (!gscResult) return { openOpportunities: 0, estimatedMonthlyGain: 0 };
+  const r = gscResult as Record<string, unknown>;
+  const quickWins = (r.quickWins as Array<{ estimatedTrafficGain?: number }>) || [];
+  const priorityMatrix = (r.priorityMatrix as Array<{ opportunityScore?: number; impact?: string }>) || [];
+
+  const totalGain = quickWins.reduce((s: number, q: { estimatedTrafficGain?: number }) => s + (q.estimatedTrafficGain ?? 0), 0);
+  const openCount = priorityMatrix.filter(p => p.impact === 'critical' || p.impact === 'high').length;
+
+  return { openOpportunities: openCount, estimatedMonthlyGain: totalGain };
+}
+
+export function ExecutiveDashboard({ siteUrl }: Props) {
+  const gscResult = useStore(s => s.gscResult);
+  const [dbData, setDbData] = useState<{ healthScore: HealthScoreResult | null; openOpportunities: number; resolvedThisWeek: number; estimatedMonthlyGain: number; priorityActions: DashboardData['priorityActions']; trendSeries: DashboardData['trendSeries'] }>({
+    healthScore: null, openOpportunities: 0, resolvedThisWeek: 0, estimatedMonthlyGain: 0, priorityActions: [], trendSeries: [],
   });
   const [loading, setLoading] = useState(true);
   const { isBeginner } = useExpertise();
 
+  // Always try DB — it's the source of truth for historical trend data
   useEffect(() => {
     if (!siteUrl) { setLoading(false); return; }
 
     async function load() {
       try {
-        const [healthRes, progressRes] = await Promise.all([
-          fetch(`/api/health-score?siteUrl=${encodeURIComponent(siteUrl)}&weeks=8`),
-          fetch(`/api/progress?siteUrl=${encodeURIComponent(siteUrl)}&status=open&limit=10`),
-        ]);
-
+        const healthRes = await fetch(`/api/health-score?siteUrl=${encodeURIComponent(siteUrl)}&weeks=8`);
         const healthData = healthRes.ok ? await healthRes.json() : null;
-        const progressData = progressRes.ok ? await progressRes.json() : null;
-
-        const opps = progressData?.opportunities ?? [];
-        const priorityActions = opps.map((o: { actionType: string; actionPlan: { steps: Array<{ title: string; timeEstimate: string }>; effortLabel: string } | null; estimatedGain: number; effort: string }) => ({
-          actionType: o.actionType,
-          label: ACTION_LABELS[o.actionType] ?? o.actionType,
-          description: (o.actionPlan as { steps: Array<{ description: string }> } | null)?.steps?.[0]?.description ?? 'See action plan for steps',
-          estimatedGain: o.estimatedGain,
-          effort: o.effort,
-          effortLabel: (o.actionPlan as { effortLabel: string } | null)?.effortLabel ?? o.effort,
-          color: ACTION_COLORS[o.actionType] ?? '#64748b',
-          steps: (o.actionPlan as { steps: Array<{ title: string; timeEstimate: string }> } | null)?.steps?.map((s) => ({
-            title: s.title, timeEstimate: s.timeEstimate,
-          })) ?? [],
-        }));
 
         const latestEntry = healthData?.latestEntry;
-        setData({
+        setDbData({
           healthScore: healthData ? {
             overallScore: healthData.currentScore ?? 0,
             grade: healthData.grade ?? 'C',
             trend: healthData.trend ?? '→ Stable',
             weeklyDelta: latestEntry?.delta ?? null,
             dimensions: [],
-            totalOpportunities: progressData?.count ?? 0,
+            totalOpportunities: healthData?.latestEntry?.totalOpportunities ?? 0,
             resolvedThisWeek: latestEntry?.resolvedThisWeek ?? 0,
             estimatedMonthlyGain: latestEntry?.estimatedMonthlyGain ?? 0,
           } : null,
-          openOpportunities: progressData?.count ?? 0,
+          openOpportunities: healthData?.latestEntry?.totalOpportunities ?? 0,
           resolvedThisWeek: latestEntry?.resolvedThisWeek ?? 0,
           estimatedMonthlyGain: latestEntry?.estimatedMonthlyGain ?? 0,
-          priorityActions,
+          priorityActions: [],
           trendSeries: healthData?.trendSeries ?? [],
         });
       } catch (e) {
-        console.error('[ExecutiveDashboard load error]', e);
+        console.error('[ExecutiveDashboard DB load error]', e);
       } finally {
         setLoading(false);
       }
     }
     load();
   }, [siteUrl]);
+
+  // Derive from live gscResult if available, otherwise use DB
+  const liveDerived = useMemo(() => deriveFromGscResult(gscResult), [gscResult]);
+  const progressDerived = useMemo(() => deriveFromProgress(gscResult), [gscResult]);
+
+  // Use live data if gscResult is fresh (shows analysis results immediately after run)
+  // Use DB data if it's richer (historical trend series)
+  const hasLiveData = !!gscResult && !!((gscResult as Record<string, unknown>).overview);
+  const data: DashboardData = {
+    healthScore: hasLiveData ? liveDerived.healthScore : dbData.healthScore,
+    openOpportunities: hasLiveData ? progressDerived.openOpportunities : dbData.openOpportunities,
+    resolvedThisWeek: dbData.resolvedThisWeek,
+    estimatedMonthlyGain: hasLiveData ? progressDerived.estimatedMonthlyGain : dbData.estimatedMonthlyGain,
+    priorityActions: hasLiveData ? liveDerived.priorityActions : dbData.priorityActions,
+    trendSeries: dbData.trendSeries.length > 0 ? dbData.trendSeries : [],
+  };
 
   if (loading) {
     return (
